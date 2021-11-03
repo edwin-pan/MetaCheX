@@ -15,8 +15,9 @@ kaggle datasets download -d nih-chest-xrays/data
 mkdir -p nih/images
 unzip data.zip -d nih/images
 rm *.pdf && rm *.txt && rm BBox_List_2017.csv
-mv */* .
+mv */images/* .
 rmdir *
+mv Data_Entry_2017.csv ../
 ```
 
 ### COVID-19 RADIOGRAPHY ([link](https://www.kaggle.com/tawsifurrahman/covid19-radiography-database))
