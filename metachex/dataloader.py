@@ -9,9 +9,8 @@ from metachex.configs.config import *
 
 class MetaChexDataset():
     def __init__(self):
-        # Reads in csv file and adds label_num col (requires label to be str rather than list of str)
+        # Reads in data.pkl file (mapping of paths to unformatted labels)
         self.data_path = os.path.join(PATH_TO_DATA_FOLDER, 'data.pkl')
-        self.labels_path = os.path.join(PATH_TO_DATA_FOLDER, 'labels.csv')
         
         # Pre-processing
         print("[INFO] pre-processing")
@@ -121,17 +120,17 @@ class MetaChexDataset():
 
     def preprocess_data(self):
         """
-        If labels.csv exists, read from it.
+        If data.pkl exists, read from it.
 
         Otherwise, extract filenames and labels for:
         - ChestX-ray14 (NIH) dataset
         - COVID-19 Radiography Dataset
         - covid-chestxray-dataset
 
-        and put in labels.csv
+        and put in data.pkl
         """
 
-        if os.path.isfile(self.data_path): ## path does not exist
+        if os.path.isfile(self.data_path): ## path does exist
             print(f"Data already processed. Loading from save {self.data_path}")
         else:
             print(f"Data needs to be processed. Proceeding...")
@@ -146,7 +145,8 @@ class MetaChexDataset():
             # --- Denotes which dataset (train/val/test) the images belong to
             df_nih_splits = pd.DataFrame(columns=['image_path', 'dataset'])
             for dataset_type in ['train', 'val', 'test']:
-                sub_df_nih = pd.read_csv(os.path.join('CheXNet_data_split', f'{dataset_type}.csv'), usecols=['Image Index']).rename(columns={'Image Index': 'image_path'})
+                sub_df_nih = pd.read_csv(os.path.join('CheXNet_data_split', f'{dataset_type}.csv'), 
+                                         usecols=['Image Index']).rename(columns={'Image Index': 'image_path'})
                 sub_df_nih['dataset'] = dataset_type
                 df_nih_splits = df_nih_splits.append(sub_df_nih)
             
@@ -184,7 +184,8 @@ class MetaChexDataset():
             label_arr = np.where(label_arr == 'Normal', 'No Finding', label_arr) ## replace 'Normal' with 'No Finding'
             df_cr['image_path'] = image_lst
             df_cr['label'] = label_arr
-            df_cr['label'] = df_cr['label'].str.strip().str.split(pat='.') ## makes each label a list (random sep so that no split on space)
+            ## makes each label a list (random sep so that no split on space)
+            df_cr['label'] = df_cr['label'].str.strip().str.split(pat='.') 
             df = df.append(df_cr)
 
             df = df.reset_index(drop=True)
@@ -196,6 +197,12 @@ class MetaChexDataset():
 
 
     def generate_labels(self, df, filename, combo=True):
+        """
+        Generates the multiclass (categorical) and binary multitask (list of 0's and 1's) labels
+        df: DataFrame of paths to unformatted labels
+        filename: where to save new dataframe to (pkl)
+        combo: whether or not to generate the multiclass (categorical) labels
+        """
         path = os.path.join(PATH_TO_DATA_FOLDER, filename)
         if not os.path.isfile(path): ## path does not exist
             if combo:
