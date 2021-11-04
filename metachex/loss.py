@@ -12,7 +12,7 @@ class Losses():
         
     def weighted_binary_crossentropy(self):
         """class_weights: array of size (27, )"""
-        bce = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+        bce = tf.keras.losses.BinaryCrossentropy(from_logits=False)
     
         def weighted_loss(y_true, y_pred):
             return self.class_weights*bce(y_true, y_pred)
