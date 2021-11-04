@@ -206,7 +206,7 @@ class MetaChexDataset():
         combo: whether or not to generate the multiclass (categorical) labels
         """
         path = os.path.join(PATH_TO_DATA_FOLDER, filename)
-        if os.path.isfile(path): ## path does not exist
+        if not os.path.isfile(path): ## path does not exist
             if combo:
                 ## Get combo label (for multiclass classification)
                 df['label_num_multi'] = df.groupby(['label_str']).ngroup()
