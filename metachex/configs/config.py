@@ -1,5 +1,6 @@
 # Paths
-PATH_TO_DATA_FOLDER = './data'
+PATH_TO_DATA_FOLDER = '/home/elainesui/MetaCheX/data'
+#'./data'
 NIH_IMAGES = 'nih/images'
 NIH_METADATA_PATH = 'nih/Data_Entry_2017.csv'
 COVID_19_RADIOGRAPHY_IMAGES = 'COVID-19_Radiography_Dataset/images' ## note labels are in the filenames
