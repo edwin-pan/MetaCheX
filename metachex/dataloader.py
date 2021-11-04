@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import os
 import sys
+import warnings
+warnings.filterwarnings("error")
 
 from glob import glob
 from metachex.configs.config import *
@@ -42,13 +44,17 @@ class MetaChexDataset():
         """
         path: path to image
         """
-        try:
-            image = tf.io.read_file(path)
+        image = tf.io.read_file(path) 
+        try: 
+            print("Attempting to read rgb")
             image = tf.io.decode_png(image, channels=3)
-            image = tf.image.resize(image, [IMAGE_SIZE, IMAGE_SIZE], method='lanczos3')
-            image = image / 255 ## pixels in [0, 255] -- normalize to [0, 1]
-        except ValueError:
-            print('Error: ', path)
+        except Warning as e:
+            print("Image is grayscale. Decode to grayscale then convert to rgb")
+            image = tf.io.decode_png(image, channels=1) ## grayscale
+            image = tf.image.grayscale_to_rgb(image)
+
+        image = tf.image.resize(image, [IMAGE_SIZE, IMAGE_SIZE], method='lanczos3')
+        image = image / 255 ## pixels in [0, 255] -- normalize to [0, 1]
         return image, label
 
 
@@ -268,14 +274,17 @@ class MetaChexDataset():
         else: # Unconstrained
             indiv_weights = (1 / indiv['count']) * (indiv['count'].sum() / indiv.shape[0])
             combo_weights = (1 / combo['count']) * (combo['count'].sum() / combo.shape[0])
-
-#         indiv_class_weights = dict(list(enumerate(indiv_weights.values)))
-#         combo_class_weights = dict(list(enumerate(combo_weights.values)))
         
         indiv_weights = indiv_weights.sort_index()
         indiv_weights = indiv_weights.drop(['No Finding'])
         combo_weights = combo_weights.sort_index()
-        return indiv_weights.values, combo_weights.values
+        
+        indiv_class_weights = dict(list(enumerate(indiv_weights.values)))
+        combo_class_weights = dict(list(enumerate(combo_weights.values)))
+        
+        
+        
+        return indiv_weights.values, indiv_class_weights, combo_class_weights
     
     def get_class_probs(self):
         """ Compute class probabilities for dataset (both individual and combo labels computed)"""
