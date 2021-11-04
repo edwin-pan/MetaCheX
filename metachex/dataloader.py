@@ -132,7 +132,7 @@ class MetaChexDataset():
         and put in data.pkl
         """
 
-        if os.path.isfile(self.data_path): ## path does exist
+        if os.path.isfile(self.data_path): # path does exist
             print(f"Data already processed. Loading from save {self.data_path}")
         else:
             print(f"Data needs to be processed. Proceeding...")
@@ -142,6 +142,14 @@ class MetaChexDataset():
             full_path = os.path.join(PATH_TO_DATA_FOLDER, NIH_METADATA_PATH)
             df_nih = pd.read_csv(full_path)[['Image Index', 'Finding Labels']]
             df_nih.rename(columns={'Image Index': 'image_path', 'Finding Labels': 'label'}, inplace=True)
+            
+            # Keep only 20k 'No Finding' images
+            df_nih_no_finding = df_nih[df_nih['label'] == 'No Finding'] # get all no findings
+            df_nih_no_finding = df_nih_no_finding.sample(n=20000, random_state=271) # choose only 20k
+            
+            df_nih = df_nih[df_nih['label'] != 'No Finding'] ## remove all no findings
+            df_nih = df_nih.append(df_nih_no_finding)
+            
             df_nih['label'] = df_nih['label'].str.strip().str.split('|')
             
             # --- Denotes which dataset (train/val/test) the images belong to
@@ -163,7 +171,11 @@ class MetaChexDataset():
             df_cc = pd.read_csv(full_path)[['filename', 'finding']]
             df_cc.rename(columns={'filename': 'image_path', 'finding': 'label'}, inplace=True)
             df_cc = df_cc.drop(df_cc[(df_cc['label'] == 'todo') | (df_cc['label'] == 'Unknown')].index).reset_index(drop=True)
-            df_cc['label'] = df_cc['label'].str.strip().str.split('/')
+            df_cc['label'] = df_cc['label'].str.strip()
+            ## Remove all the 'No Finding' images
+            df_cc = df_cc[df_cc['label'] != 'No Finding']
+            df_cc['label'] = df_cc['label'].str.split('/')
+            df_cc = df_cc.reset_index(drop=True)
             ## Remove the label after 'Pneumonia' that specifies type of pneumonia if given
             for i in range(df_cc.shape[0]):
                 label = df_cc.at[i, 'label']
@@ -174,6 +186,10 @@ class MetaChexDataset():
                     df_cc.at[i, 'label'] = sorted(label)
             
             df_cc['image_path'] = PATH_TO_DATA_FOLDER + '/' + COVID_CHESTXRAY_IMAGES + '/' + df_cc['image_path']
+            
+            ## Remove all images that have .gz extension
+            df_cc = df_cc[df_cc['image_path'].str[-2:] != 'gz']
+            
             df = df.append(df_cc)
 
             ## COVID-19 Radiography
@@ -183,9 +199,12 @@ class MetaChexDataset():
             label_arr = np.array([f[f.rindex('/') + 1:f.rindex('-')] for f in image_lst])
             label_arr = np.where(label_arr == 'COVID', 'COVID-19', label_arr) ## replace COVID with COVID-19 for consistency
             label_arr = np.where(label_arr == 'Viral Pneumonia', 'Pneumonia', label_arr)
-            label_arr = np.where(label_arr == 'Normal', 'No Finding', label_arr) ## replace 'Normal' with 'No Finding'
             df_cr['image_path'] = image_lst
             df_cr['label'] = label_arr
+            
+            ## Remove all the 'Normal' images
+            df_cr = df_cr[df_cr['label'] != 'Normal']
+            
             ## makes each label a list (random sep so that no split on space)
             df_cr['label'] = df_cr['label'].str.strip().str.split(pat='.') 
             df = df.append(df_cr)
@@ -250,10 +269,10 @@ class MetaChexDataset():
             indiv_weights = (1 / indiv['count']) * (indiv['count'].sum() / indiv.shape[0])
             combo_weights = (1 / combo['count']) * (combo['count'].sum() / combo.shape[0])
 
-        indiv_class_weights = dict(list(enumerate(indiv_weights.values)))
-        combo_class_weights = dict(list(enumerate(combo_weights.values)))
+#         indiv_class_weights = dict(list(enumerate(indiv_weights.values)))
+#         combo_class_weights = dict(list(enumerate(combo_weights.values)))
         
-        return indiv_class_weights, combo_class_weights
+        return indiv_weights.values, combo_weights.values
     
     def get_class_probs(self):
         """ Compute class probabilities for dataset (both individual and combo labels computed)"""
@@ -264,13 +283,13 @@ class MetaChexDataset():
         return indiv_class_probs, combo_class_probs
     
 
-    def shuffle_and_batch(self, ds, batch_size=32):
+    def shuffle_and_batch(self, ds, batch_size=8):
         """ Train/val/test split: Remember that the NIH data has to be split according to how it was pre-trained. """
         ds = ds.cache()
-        ds = ds.shuffle(buffer_size=1000)
+        ds = ds.shuffle(buffer_size=100)
         ds = ds.map(self.load_and_preprocess_image) ## maps the preprocessing step
         ds = ds.batch(batch_size)
-        ds = ds.prefetch(buffer_size=tf.data.AUTOTUNE)
+#         ds = ds.prefetch(buffer_size=tf.data.AUTOTUNE)
         return ds
 
 
