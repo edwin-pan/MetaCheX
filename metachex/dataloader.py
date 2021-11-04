@@ -272,6 +272,9 @@ class MetaChexDataset():
 #         indiv_class_weights = dict(list(enumerate(indiv_weights.values)))
 #         combo_class_weights = dict(list(enumerate(combo_weights.values)))
         
+        indiv_weights = indiv_weights.sort_index()
+        indiv_weights = indiv_weights.drop(['No Finding'])
+        combo_weights = combo_weights.sort_index()
         return indiv_weights.values, combo_weights.values
     
     def get_class_probs(self):
