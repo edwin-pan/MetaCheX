@@ -16,12 +16,14 @@ class MetaChexDataset():
         print("[INFO] pre-processing")
         self.preprocess_data()
         self.df = pd.read_pickle(self.data_path)
-        self.unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums = self.get_data_stats(self.df)
+        unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums = self.get_data_stats(self.df)
 
         # Trim low-sample count labels
         print("[INFO] truncating dataset")
         df_combos_exclude = df_combo_nums[df_combo_nums['count'] < SAMPLE_MIN].reset_index().rename(columns={'index': 'label_str'})
         self.df_condensed = self.df[~self.df['label_str'].isin(df_combos_exclude['label_str'])].reset_index(drop=True)
+        self.unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums = self.get_data_stats(self.df_condensed)
+#         print("Generated labels: ", len(list(self.unique_labels_dict.keys())))
         self.df_condensed = self.generate_labels(self.df_condensed, 'data_condensed.pkl')
         self.df_condensed['label_multitask'][1]
 
@@ -204,7 +206,7 @@ class MetaChexDataset():
         combo: whether or not to generate the multiclass (categorical) labels
         """
         path = os.path.join(PATH_TO_DATA_FOLDER, filename)
-        if not os.path.isfile(path): ## path does not exist
+        if os.path.isfile(path): ## path does not exist
             if combo:
                 ## Get combo label (for multiclass classification)
                 df['label_num_multi'] = df.groupby(['label_str']).ngroup()
