@@ -45,13 +45,26 @@ class MetaChexDataset():
         path: path to image
         """
         image = tf.io.read_file(path) 
-        try: 
-            print("Attempting to read rgb")
-            image = tf.io.decode_png(image, channels=3)
-        except Warning as e:
-            print("Image is grayscale. Decode to grayscale then convert to rgb")
-            image = tf.io.decode_png(image, channels=1) ## grayscale
+        image_copy = tf.io.read_file(path)
+        
+        image_copy = tf.convert_to_tensor(image_copy)
+        s = image_copy.shape
+        if s.ndims is not None and s.ndims < 4:
+            image = tf.io.decode_png(image, channels=1) 
             image = tf.image.grayscale_to_rgb(image)
+            #grayscale
+        else:
+            image = tf.io.decode_png(image, channels=3)
+       
+        
+
+#         try: 
+#             print("Attempting to read rgb")
+#             image = tf.io.decode_png(image, channels=3)
+#         except Warning as e:
+#             print("Image is grayscale. Decode to grayscale then convert to rgb")
+#             image = tf.io.decode_png(image, channels=1) ## grayscale
+#             image = tf.image.grayscale_to_rgb(image)
 
         image = tf.image.resize(image, [IMAGE_SIZE, IMAGE_SIZE], method='lanczos3')
         image = image / 255 ## pixels in [0, 255] -- normalize to [0, 1]
