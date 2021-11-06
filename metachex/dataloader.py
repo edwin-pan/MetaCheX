@@ -119,6 +119,8 @@ class MetaChexDataset():
                                                     df_nih['label_multitask'].to_list()))
             nih_datasets.append(ds)
         
+        # return nih_datasets
+
         ## Non-nih data
         df_other = df[df['dataset'].isna()]
         other_count = len(df_other)
@@ -164,7 +166,7 @@ class MetaChexDataset():
             
             # Keep only 20k 'No Finding' images
             df_nih_no_finding = df_nih[df_nih['label'] == 'No Finding'] # get all no findings
-            df_nih_no_finding = df_nih_no_finding.sample(n=20000, random_state=271) # choose only 20k
+            df_nih_no_finding = df_nih_no_finding.sample(n=10000, random_state=271) # choose only 20k
             
             df_nih = df_nih[df_nih['label'] != 'No Finding'] ## remove all no findings
             df_nih = df_nih.append(df_nih_no_finding)
@@ -283,22 +285,25 @@ class MetaChexDataset():
         _, _, indiv, combo = self.get_data_stats(self.df_condensed)
         if one_cap: # Restrains between 0 and 1
             indiv_weights = (indiv['count'].sum() - indiv['count'])/indiv['count'].sum()
+            # indiv_prob_class = (indiv['count'])/indiv['count'].sum()
             combo_weights = (combo['count'].sum() - combo['count'])/combo['count'].sum()
         else: # Unconstrained
-            indiv_weights = (1 / indiv['count']) * (indiv['count'].sum() / indiv.shape[0])
+            indiv_weights = (1 / indiv['count']) * (indiv['count'].sum() / indiv.shape[0]) # weight we want to apply if class is TRUE
+            indiv_weights_false = (1 / (indiv['count'].sum()-indiv['count'])) * (indiv['count'].sum() / indiv.shape[0]) # weight we want to apply if class is TRUE
             combo_weights = (1 / combo['count']) * (combo['count'].sum() / combo.shape[0])
         
         indiv_weights = indiv_weights.sort_index()
         indiv_weights = indiv_weights.drop(['No Finding'])
+        indiv_weights_false = indiv_weights_false.sort_index()
+        indiv_weights_false = indiv_weights_false.drop(['No Finding'])
         combo_weights = combo_weights.sort_index()
         
-        indiv_class_weights = dict(list(enumerate(indiv_weights.values)))
+        indiv_class_weights = dict(list(enumerate((indiv_weights.values, indiv_weights_false.values))))
         combo_class_weights = dict(list(enumerate(combo_weights.values)))
         
-        
-        
-        return indiv_weights.values, indiv_class_weights, combo_class_weights
+        return np.array([indiv_weights.values, indiv_weights_false.values]), indiv_class_weights, combo_class_weights
     
+
     def get_class_probs(self):
         """ Compute class probabilities for dataset (both individual and combo labels computed)"""
         _, _, indiv, combo = self.get_data_stats(self.df_condensed)
