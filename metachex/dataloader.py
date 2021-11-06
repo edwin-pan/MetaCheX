@@ -37,6 +37,7 @@ class MetaChexDataset():
         print("[INFO] shuffle & batch")
         self.train_ds = self.shuffle_and_batch(self.train_ds)
         self.val_ds = self.shuffle_and_batch(self.val_ds)
+        self.test_ds = self.shuffle_and_batch(self.test_ds)
 
         print('[INFO] initialized')
         return
@@ -334,7 +335,6 @@ class MetaChexDataset():
     
 
     def shuffle_and_batch(self, ds):
-        """ Train/val/test split: Remember that the NIH data has to be split according to how it was pre-trained. """
         ds = ds.cache()
         ds = ds.shuffle(buffer_size=100)
         ds = ds.map(self.load_and_preprocess_image) ## maps the preprocessing step
