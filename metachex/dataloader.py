@@ -11,6 +11,8 @@ from metachex.configs.config import *
 
 class MetaChexDataset():
     def __init__(self):
+        self.batch_size = 8
+        
         # Reads in data.pkl file (mapping of paths to unformatted labels)
         self.data_path = os.path.join(PATH_TO_DATA_FOLDER, 'data.pkl')
         
@@ -113,30 +115,48 @@ class MetaChexDataset():
         
         ## Deal with NIH datasplit first
         nih_datasets = []
+        nih_ds_sizes = []
         for ds_type in ['train', 'val', 'test']:
             df_nih = df[df['dataset'] == ds_type]
             ds = tf.data.Dataset.from_tensor_slices((df_nih['image_path'], 
                                                     df_nih['label_multitask'].to_list()))
+            nih_ds_sizes.append(len(ds))
             nih_datasets.append(ds)
         
+        
+        print("NIH ds sizes", nih_ds_sizes)
         # return nih_datasets
 
         ## Non-nih data
         df_other = df[df['dataset'].isna()]
         other_count = len(df_other)
+        total_count = len(df)
         ds = tf.data.Dataset.from_tensor_slices((df_other['image_path'], df_other['label_multitask'].to_list()))
         ds = ds.shuffle(other_count, reshuffle_each_iteration=False)
-        train_count, val_count = int(other_count * split[0]), int(other_count * split[1])
+        train_count = max(int(total_count * split[0]) - nih_ds_sizes[0], 0)
+        val_count = max(int(total_count * split[1]) - nih_ds_sizes[1], 0)
+        
         train_ds = ds.take(train_count)
         val_ds = ds.skip(train_count).take(val_count)
         test_ds = ds.skip(train_count + val_count) 
         
         other_datasets = [train_ds, val_ds, test_ds]
+        other_ds_sizes = [len(d) for d in other_datasets]
+        print("Other ds sizes", other_ds_sizes)
         
         full_datasets = []
+        total_samples = 0
         for i in range(3):
             ds = other_datasets[i].concatenate(nih_datasets[i])
+            print(len(ds))
             full_datasets.append(ds)
+            total_samples += len(ds)
+            
+        print("Total samples: ", total_samples)
+        
+        full_ds_split = [len(d) / total_count for d in full_datasets]
+        print("True split: ", full_ds_split)
+        self.steps_per_epoch = (len(full_datasets[0]) / self.batch_size) * 0.1
         
         return full_datasets
 
@@ -313,12 +333,12 @@ class MetaChexDataset():
         return indiv_class_probs, combo_class_probs
     
 
-    def shuffle_and_batch(self, ds, batch_size=8):
+    def shuffle_and_batch(self, ds):
         """ Train/val/test split: Remember that the NIH data has to be split according to how it was pre-trained. """
         ds = ds.cache()
         ds = ds.shuffle(buffer_size=100)
         ds = ds.map(self.load_and_preprocess_image) ## maps the preprocessing step
-        ds = ds.batch(batch_size)
+        ds = ds.batch(self.batch_size)
 #         ds = ds.prefetch(buffer_size=tf.data.AUTOTUNE)
         return ds
 
