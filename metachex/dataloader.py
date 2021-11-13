@@ -9,6 +9,91 @@ warnings.filterwarnings("error")
 from glob import glob
 from metachex.configs.config import *
 
+from tensorflow.keras.utils import Sequence
+from PIL import Image
+import sklearn
+from skimage.transform import resize
+
+
+class ImageSequence(Sequence):
+    """
+    Class was taken from CheXNet implementation
+    """
+
+    def __init__(self, df, batch_size=8,
+                 target_size=(224, 224), augmenter=None, verbose=0, steps=None,
+                 shuffle_on_epoch_end=True, random_state=271):
+        """
+        :param df: dataframe of all the images for a specific split (train, val or test)
+        :param batch_size: int
+        :param target_size: tuple(int, int)
+        :param augmenter: imgaug object. Do not specify resize in augmenter.
+                          It will be done automatically according to input_shape of the model.
+        :param verbose: int
+        """
+        self.df = df
+        self.batch_size = batch_size
+        self.target_size = target_size
+        self.augmenter = augmenter ## not used
+        self.verbose = verbose
+        self.shuffle = shuffle_on_epoch_end
+        self.random_state = random_state
+        self.prepare_dataset()
+        if steps is None:
+            self.steps = int(np.ceil(len(self.x_path) / float(self.batch_size)))
+        else:
+            self.steps = int(steps)
+
+    def __bool__(self):
+        return True
+
+    def __len__(self):
+        return self.steps
+
+    def __getitem__(self, idx):
+        batch_x_path = self.x_path[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
+        batch_x = self.transform_batch_images(batch_x)
+        batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
+        return batch_x, batch_y
+
+    def load_image(self, image_path):
+        image = Image.open(image_path)
+        image_array = np.asarray(image.convert("RGB"))
+        image_array = image_array / 255.
+        image_array = resize(image_array, self.target_size)
+        return image_array
+
+    def transform_batch_images(self, batch_x):
+        if self.augmenter is not None:
+            batch_x = self.augmenter.augment_images(batch_x)
+        imagenet_mean = np.array([0.485, 0.456, 0.406])
+        imagenet_std = np.array([0.229, 0.224, 0.225])
+        batch_x = (batch_x - imagenet_mean) / imagenet_std
+        return batch_x
+
+    def get_y_true(self):
+        """
+        Use this function to get y_true for predict_generator
+        In order to get correct y, you have to set shuffle_on_epoch_end=False.
+        """
+        if self.shuffle:
+            raise ValueError("""
+            You're trying run get_y_true() when generator option 'shuffle_on_epoch_end' is True.
+            """)
+        return self.y[:self.steps*self.batch_size, :]
+
+    def prepare_dataset(self):
+        df = self.df.sample(frac=1., random_state=self.random_state)
+        self.x_path, self.y = df['image_path'], np.array(df['label_multitask'].to_list())
+        print("self.y.shape: ", self.y.shape)
+
+    def on_epoch_end(self):
+        if self.shuffle:
+            self.random_state += 1
+            self.prepare_dataset()
+
+
 class MetaChexDataset():
     def __init__(self):
         self.batch_size = 8
@@ -32,12 +117,15 @@ class MetaChexDataset():
         self.df_condensed['label_multitask'][1]
 
         print("[INFO] constructing tf train/val/test vars")
-        [self.train_ds, self.val_ds, self.test_ds] = self.get_ds_splits(self.df_condensed)
-
+#         [self.train_ds, self.val_ds, self.test_ds] = self.get_ds_splits(self.df_condensed)
+         ## already shuffled and batched
         print("[INFO] shuffle & batch")
-        self.train_ds = self.shuffle_and_batch(self.train_ds)
-        self.val_ds = self.shuffle_and_batch(self.val_ds)
-        self.test_ds = self.shuffle_and_batch(self.test_ds)
+        [self.train_ds, self.val_ds, self.test_ds] = self.get_generator_splits(self.df_condensed)
+
+#         print("[INFO] shuffle & batch")
+#         self.train_ds = self.shuffle_and_batch(self.train_ds)
+#         self.val_ds = self.shuffle_and_batch(self.val_ds)
+#         self.test_ds = self.shuffle_and_batch(self.test_ds)
 
         print('[INFO] initialized')
         return
@@ -108,6 +196,64 @@ class MetaChexDataset():
         return unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums
 
 
+    def get_generator_splits(self, df, split=(0.8, 0.1, 0.1)):
+        """Splitting with tensorflow sequence instead of dataset"""
+        
+        ## Deal with NIH datasplit first
+        nih_dataframes = []
+        nih_df_sizes = []
+        
+        for ds_type in ['train', 'val', 'test']:
+            df_nih = df[df['dataset'] == ds_type]
+            nih_df_sizes.append(len(df_nih))
+            nih_dataframes.append(df_nih)
+        
+        ## Non-nih data
+        df_other = df[df['dataset'].isna()]
+        df_other = sklearn.utils.shuffle(df_other) # shuffle
+        
+        other_count = len(df_other)
+        total_count = len(df)
+        
+        train_count = max(int(total_count * split[0]) - nih_df_sizes[0], 0)
+        val_count = max(int(total_count * split[1]) - nih_df_sizes[1], 0)
+        test_count = other_count - train_count - val_count
+        
+        df_other_train = df_other.head(train_count)
+        df_other_test = df_other.tail(test_count)
+        df_other_val = df_other.loc[~df_other['image_path'].isin(df_other_train['image_path'])].copy()
+        df_other_val = df_other_val.loc[~df_other_val['image_path'].isin(df_other_test['image_path'])].copy()
+        
+        print(f"len(df_other_val): {len(df_other_val)}")
+        assert(len(df_other_val) == val_count)
+        assert(len(df_other_test) == test_count)
+        assert(len(df_other_train) == train_count)
+        
+        full_datasets = []
+        
+        for i, ds_type in enumerate(['train', 'val', 'test']):
+#             df_combined = nih_dataframes[i].append(other_dataframes[i])
+            df_combined = nih_dataframes[i]
+            if ds_type == 'train':
+                shuffle_on_epoch_end = True
+                factor = 0.1
+            else:
+                shuffle_on_epoch_end = False
+                factor = 0.2
+            
+            steps = int(len(df_combined) / self.batch_size * factor)
+            
+            if ds_type == 'train':
+                self.train_steps_per_epoch = steps
+            elif ds_type == 'val':
+                self.val_steps_per_epoch = steps
+                
+            df_combined = sklearn.utils.shuffle(df_combined) # shuffle
+            ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end)
+            full_datasets.append(ds)
+            
+        return full_datasets
+    
     ## Train-val-test splits
     def get_ds_splits(self, df, split=(0.7, 0.1, 0.2)):
         """
@@ -126,8 +272,10 @@ class MetaChexDataset():
         
         
         print("NIH ds sizes", nih_ds_sizes)
-        # return nih_datasets
+        self.steps_per_epoch = (len(nih_datasets[0]) / self.batch_size) * 0.1
+        return nih_datasets ## early return for now
 
+    
         ## Non-nih data
         df_other = df[df['dataset'].isna()]
         other_count = len(df_other)
@@ -187,7 +335,7 @@ class MetaChexDataset():
             
             # Keep only 20k 'No Finding' images
             df_nih_no_finding = df_nih[df_nih['label'] == 'No Finding'] # get all no findings
-            df_nih_no_finding = df_nih_no_finding.sample(n=10000, random_state=271) # choose only 20k
+            df_nih_no_finding = df_nih_no_finding.sample(n=20000, random_state=271) # choose only 20k
             
             df_nih = df_nih[df_nih['label'] != 'No Finding'] ## remove all no findings
             df_nih = df_nih.append(df_nih_no_finding)
@@ -297,7 +445,12 @@ class MetaChexDataset():
             df.to_pickle(path)
         else:
             df = pd.read_pickle(path)
+            
+            unique_labels = list(self.unique_labels_dict.keys())
         
+            self.num_classes_multitask = len(unique_labels) - 1 ## remove no finding
+            self.num_classes_multiclass = max(df['label_num_multi'].values) + 1
+
         return df
     
     
@@ -306,6 +459,7 @@ class MetaChexDataset():
         _, _, indiv, combo = self.get_data_stats(self.df_condensed)
         if one_cap: # Restrains between 0 and 1
             indiv_weights = (indiv['count'].sum() - indiv['count'])/indiv['count'].sum()
+            indiv_weights_false = indiv['count']/indiv['count'].sum()
             # indiv_prob_class = (indiv['count'])/indiv['count'].sum()
             combo_weights = (combo['count'].sum() - combo['count'])/combo['count'].sum()
         else: # Unconstrained
@@ -321,6 +475,10 @@ class MetaChexDataset():
         
         indiv_class_weights = dict(list(enumerate((indiv_weights.values, indiv_weights_false.values))))
         combo_class_weights = dict(list(enumerate(combo_weights.values)))
+        
+        indiv_class_weights = {}
+        for i in range(len(indiv_weights)):
+            indiv_class_weights = {i: {0: indiv_weights.values[i], 1: indiv_weights_false.values[i]}}
         
         return np.array([indiv_weights.values, indiv_weights_false.values]), indiv_class_weights, combo_class_weights
     

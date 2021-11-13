@@ -1,15 +1,12 @@
 import tensorflow as tf
 import numpy as np
+from supcon.losses import contrastive_loss
 
 class Losses():
     
     def __init__(self, class_weights, batch_size=8):
         self.class_weights = class_weights
         self.batch_size = batch_size
-    # def get_weighted_loss(weights):
-#     def weighted_loss(y_true, y_pred):
-#         return K.mean((weights[:,0]**(1-y_true))*(weights[:,1]**(y_true))*K.binary_crossentropy(y_true, y_pred), axis=-1)
-#     return weighted_loss
         
     def weighted_binary_crossentropy(self):
         """class_weights: array of size (27, )"""
@@ -28,5 +25,26 @@ class Losses():
 
             y_true_fat = y_true.reshape([-1, y_true.shape[1], 1])
             y_pred_fat = y_pred.reshape([-1, y_pred.shape[1], 1])
+            
             return new_weight*bce(y_true_fat, y_pred_fat)
         return weighted_loss
+    
+    
+    def supcon_label_loss(self, features, labels):
+        """
+        features (ie the z's): [batch_size, num_views, embedding_dim] where num_views = 1 (since we do not augment our anchors)
+        labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
+        """
+        return tf.reduce_mean(contrastive_loss(features, labels))
+   
+
+    def supcon_class_loss(self, features, labels, labels_multitask):
+        """
+        features (ie the z's): [batch_size, num_views, embedding_dim] where num_views = 1 (since we do not augment our anchors)
+        labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded (multiclass)
+        labels_multitask; [batch_size, num_unique_labels], (binary multitask objective) -- this is used to determine parents and 
+                                                                                           children
+        """
+        
+        
+        ## TODO
