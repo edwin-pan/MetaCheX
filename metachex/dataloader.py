@@ -14,6 +14,8 @@ from PIL import Image
 import sklearn
 from skimage.transform import resize
 
+np.random.seed(271)
+
 
 class ImageSequence(Sequence):
     """
@@ -209,31 +211,90 @@ class MetaChexDataset():
             nih_dataframes.append(df_nih)
         
         ## Non-nih data
+        
+        ## Split the rest of the data relatively evenly according to the ratio per class
+        ## That is, for each label, the first 80% goes to train, the next 10% to val, the final 10% to test
         df_other = df[df['dataset'].isna()]
         df_other = sklearn.utils.shuffle(df_other) # shuffle
         
-        other_count = len(df_other)
-        total_count = len(df)
+        df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
         
-        train_count = max(int(total_count * split[0]) - nih_df_sizes[0], 0)
-        val_count = max(int(total_count * split[1]) - nih_df_sizes[1], 0)
-        test_count = other_count - train_count - val_count
+        image_paths, multitask_labels = df_other['image_path'].values, np.array(df_other['label_multitask'].to_list())
         
-        df_other_train = df_other.head(train_count)
-        df_other_test = df_other.tail(test_count)
-        df_other_val = df_other.loc[~df_other['image_path'].isin(df_other_train['image_path'])].copy()
-        df_other_val = df_other_val.loc[~df_other_val['image_path'].isin(df_other_test['image_path'])].copy()
+        for i in range(multitask_labels.shape[1]):
+            rows_with_label = multitask_labels[:, i] == 1
+            images_with_label = image_paths[rows_with_label]
+            
+            df_subsplit = df_other.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
+            
+            val_idx = int(len(df_subsplit) * split[0])
+            test_idx = int(len(df_subsplit) * (split[0] + split[1]))
+            df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(val_idx))
+            df_other_splits[1] = df_other_splits[1].append(df_subsplit[val_idx:test_idx])
+            df_other_splits[2] = df_other_splits[2].append(df_subsplit[test_idx:])
         
-        print(f"len(df_other_val): {len(df_other_val)}")
-        assert(len(df_other_val) == val_count)
-        assert(len(df_other_test) == test_count)
-        assert(len(df_other_train) == train_count)
+        df_other_train_val_same = df_other_splits[1].loc[df_other_splits[1]['image_path'].isin(df_other_splits[0]['image_path'])].copy()
+        df_other_train_test_same = df_other_splits[2].loc[df_other_splits[2]['image_path'].isin(df_other_splits[0]['image_path'])].copy()
+        df_other_val_test_same = df_other_splits[2].loc[df_other_splits[2]['image_path'].isin(df_other_splits[1]['image_path'])].copy()
+        print('train/val overlap: ', len(df_other_train_val_same))
+        print('train/test overlap; ', len(df_other_train_test_same))
+        print('val/test overlap; ', len(df_other_val_test_same))
+        
+        ## remove train/test and val/test overlaps on train and val sets (keep in the test set -- ensures all labels tested on)
+        df_other_splits[0] = df_other_splits[0].loc[~df_other_splits[0]['image_path'].isin(df_other_train_test_same['image_path'])]
+        df_other_splits[1] = df_other_splits[1].loc[~df_other_splits[1]['image_path'].isin(df_other_val_test_same['image_path'])]
+        
+        ## remove train/val overlap on the val set 
+        df_other_splits[1] = df_other_splits[1].loc[~df_other_splits[1]['image_path'].isin(df_other_train_val_same['image_path'])]
+        
+        ## drop duplicates in val and test (duplicates ok in train -- oversampling-ish)
+        df_other_splits[1].drop_duplicates(subset='image_path', inplace=True)
+        df_other_splits[2].drop_duplicates(subset='image_path', inplace=True)
+        
+        
+        ## To see which labels are represented in training set
+        df_combined = nih_dataframes[0].append(df_other_splits[0])
+        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
+        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
+        untrained_classes = np.where(df_multitask_labels_sum == 0)
+        print(df_multitask_labels_sum)
+        print(f'classes not trained on: {untrained_classes}')
+        
+        df_combined = nih_dataframes[1].append(df_other_splits[1])
+        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
+        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
+        unvalidated_classes = np.where(df_multitask_labels_sum == 0)
+        print(df_multitask_labels_sum)
+        print(f'classes not validated on: {unvalidated_classes}')
+        
+        df_combined = nih_dataframes[2].append(df_other_splits[2])
+        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
+        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
+        untested_classes = np.where(df_multitask_labels_sum == 0)
+        print(df_multitask_labels_sum)
+        print(f'classes not tested on: {untested_classes}')
+        
+        
+#         df_multitask_labels = np.array(df['label_multitask'].to_list())
+#         df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
+#         print(df_multitask_labels_sum)
+#         classes_that_need_to_be_augmented = np.where(df_multitask_labels_sum < 100)
+#         print(df_multitask_labels_sum)
+#         print(f'classes that need to be augmented: {classes_that_need_to_be_augmented}')
+        
+        ## [10, 11, 12, 14, 16, 17, 20, 23, 24, 25, 26]
+        
+        
+        
+        #########
+        
         
         full_datasets = []
         
         for i, ds_type in enumerate(['train', 'val', 'test']):
-#             df_combined = nih_dataframes[i].append(other_dataframes[i])
-            df_combined = nih_dataframes[i]
+            df_combined = nih_dataframes[i].append(df_other_splits[i])
+            
+            
             if ds_type == 'train':
                 shuffle_on_epoch_end = True
                 factor = 0.1
@@ -251,7 +312,7 @@ class MetaChexDataset():
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
             ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end)
             full_datasets.append(ds)
-            
+        
         return full_datasets
     
     ## Train-val-test splits
@@ -450,7 +511,9 @@ class MetaChexDataset():
         
             self.num_classes_multitask = len(unique_labels) - 1 ## remove no finding
             self.num_classes_multiclass = max(df['label_num_multi'].values) + 1
-
+        
+        
+        
         return df
     
     

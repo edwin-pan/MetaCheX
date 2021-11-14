@@ -4,9 +4,15 @@ from supcon.losses import contrastive_loss
 
 class Losses():
     
-    def __init__(self, class_weights, batch_size=8):
+    def __init__(self, class_weights, label_map=None, batch_size=8):
+        """
+        label_map: mapping of multiclass labels to a list of their parents
+        """
+        
         self.class_weights = class_weights
         self.batch_size = batch_size
+        
+        self.label_map = label_map
         
     def weighted_binary_crossentropy(self):
         """class_weights: array of size (27, )"""
@@ -38,12 +44,10 @@ class Losses():
         return tf.reduce_mean(contrastive_loss(features, labels))
    
 
-    def supcon_class_loss(self, features, labels, labels_multitask):
+    def supcon_class_loss(self, features, labels):
         """
         features (ie the z's): [batch_size, num_views, embedding_dim] where num_views = 1 (since we do not augment our anchors)
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded (multiclass)
-        labels_multitask; [batch_size, num_unique_labels], (binary multitask objective) -- this is used to determine parents and 
-                                                                                           children
         """
         
         

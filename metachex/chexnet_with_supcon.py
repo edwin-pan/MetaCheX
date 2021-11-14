@@ -28,7 +28,8 @@ class ChexNetWithSupCon():
         self.stage1_num_epochs = stage1_num_epochs
         self.stage2_num_epochs = stage2_num_epochs
         self.stage2_class_weights = stage2_class_weights
-
+        
+        
     def stage1_train_step(self, model, x, y):
         """
         model: The encoder CNN (pre-trained CheXNet) + the projection head (FC layer + norm)
