@@ -72,6 +72,7 @@ class ImageSequence(Sequence):
         imagenet_mean = np.array([0.485, 0.456, 0.406])
         imagenet_std = np.array([0.229, 0.224, 0.225])
         batch_x = (batch_x - imagenet_mean) / imagenet_std
+        batch_x = tf.convert_to_tensor(batch_x)
         return batch_x
 
     def get_y_true(self):
@@ -509,11 +510,9 @@ class MetaChexDataset():
             
             unique_labels = list(self.unique_labels_dict.keys())
         
-            self.num_classes_multitask = len(unique_labels) - 1 ## remove no finding
-            self.num_classes_multiclass = max(df['label_num_multi'].values) + 1
-        
-        
-        
+        self.num_classes_multitask = len(unique_labels) - 1 ## remove no finding
+        self.num_classes_multiclass = max(df['label_num_multi'].values) + 1
+
         return df
     
     
