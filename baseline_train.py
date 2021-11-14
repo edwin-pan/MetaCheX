@@ -74,8 +74,8 @@ def train():
     #                 loss='binary_crossentropy',
                     metrics=[tf.keras.metrics.AUC(multi_label=True),  'binary_accuracy', 'accuracy', 
                             tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask), 
-                            tf.keras.metrics.Precision(), tf.keras.metrics.Recall()])
-                    # run_eagerly=True)
+                            tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
+                    run_eagerly=True)
 
     epochs = 150
     hist = chexnet.fit(dataset.train_ds,
