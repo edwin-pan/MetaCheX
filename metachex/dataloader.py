@@ -486,8 +486,21 @@ class MetaChexDataset():
             ## Get binary multi-task labels
             unique_labels = list(self.unique_labels_dict.keys())
             unique_labels.remove('No Finding')
-            unique_labels.sort() ## alphabetical order
-
+            # unique_labels.sort() ## alphabetical order
+            unique_labels=['Atelectasis',
+                           'Cardiomegaly',
+                           'Effusion',
+                           'Infiltration',
+                           'Mass',
+                           'Nodule',
+                           'Pneumonia',
+                           'Pneumothorax',
+                           'Consolidation',
+                           'Edema',
+                           'Emphysema',
+                           'Fibrosis',
+                           'Pleural_Thickening',
+                           'Hernia']
             df['label_multitask'] = 0
             df['label_multitask'] = df['label_multitask'].astype('object')
             for i, row in df.iterrows():
