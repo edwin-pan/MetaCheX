@@ -1,5 +1,8 @@
 import tensorflow as tf
 import numpy as np
+import sys
+
+sys.path.append('../') # importing in unit tests
 from supcon.losses import contrastive_loss
 
 class Losses():

@@ -1,5 +1,5 @@
 # Paths
-PATH_TO_DATA_FOLDER = '/home/elainesui/MetaCheX/data'
+PATH_TO_DATA_FOLDER = 'data'
 #'./data'
 NIH_IMAGES = 'nih/images'
 NIH_METADATA_PATH = 'nih/Data_Entry_2017.csv'
