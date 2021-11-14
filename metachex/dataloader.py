@@ -55,7 +55,7 @@ class ImageSequence(Sequence):
     def __getitem__(self, idx):
         batch_x_path = self.x_path[idx * self.batch_size:(idx + 1) * self.batch_size]
         batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
-        batch_x = self.transform_batch_images(batch_x)
+        # batch_x = self.transform_batch_images(batch_x)
         batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
         return batch_x, batch_y
 
@@ -293,7 +293,7 @@ class MetaChexDataset():
         full_datasets = []
         
         for i, ds_type in enumerate(['train', 'val', 'test']):
-            df_combined = nih_dataframes[i].append(df_other_splits[i])
+            df_combined = nih_dataframes[i] #.append(df_other_splits[i])
             
             
             if ds_type == 'train':
@@ -442,7 +442,7 @@ class MetaChexDataset():
             ## Remove all images that have .gz extension
             df_cc = df_cc[df_cc['image_path'].str[-2:] != 'gz']
             
-            df = df.append(df_cc)
+            # df = df.append(df_cc)
 
             ## COVID-19 Radiography
             full_path = os.path.join(PATH_TO_DATA_FOLDER, COVID_19_RADIOGRAPHY_IMAGES)
@@ -459,7 +459,8 @@ class MetaChexDataset():
             
             ## makes each label a list (random sep so that no split on space)
             df_cr['label'] = df_cr['label'].str.strip().str.split(pat='.') 
-            df = df.append(df_cr)
+
+            # df = df.append(df_cr)
 
             df = df.reset_index(drop=True)
             df['label'] = df['label'].sort_values().apply(lambda x: sorted(x)) ## final sort just in case
