@@ -44,39 +44,44 @@ def load_chexnet(output_dim):
     """
     
     base_model_old = load_chexnet_pretrained()
-    # x = base_model_old.layers[-2].output ## remove old prediction layer
+    x = base_model_old.layers[-2].output ## remove old prediction layer
     
-    # ## The prediction head can be more complicated if you want
-    # predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation='sigmoid')(x)
-    # chexnet = tf.keras.models.Model(inputs=base_model_old.inputs,outputs=predictions)
-    # return chexnet
-    base_model_old.trainable=False
-    return base_model_old
+    ## The prediction head can be more complicated if you want
+    predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation='sigmoid')(x)
+    chexnet = tf.keras.models.Model(inputs=base_model_old.inputs,outputs=predictions)
+    return chexnet
+    #base_model_old.trainable=False
+    #return base_model_old
 
-def mean_auroc(y_true, y_pred):
+
+def mean_auroc(y_true, y_pred, eval=False):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
     aurocs = []
-    for i in range(y_true.shape[1]):
-        try:
-            score = roc_auc_score(y_true[:, i], y_pred[:, i])
-            aurocs.append(score)
-        except ValueError:
-            score = 0
-    mean_auroc = np.mean(aurocs)
-    
+    with open("test_log.txt", "w") as f:
+        for i in range(y_true.shape[1]):
+            try:
+                score = roc_auc_score(y_true[:, i], y_pred[:, i])
+                aurocs.append(score)
+            except ValueError:
+                score = 0
+            if eval:
+                f.write(f"{dataset.unique_labels[i]}: {score}\n")
+        mean_auroc = np.mean(aurocs)
+        if eval:
+            f.write("-----------------------\n")
+            f.write(f"mean auroc: {mean_auroc}\n")
+    if eval:
+        print(f"mean auroc: {mean_auroc}")
     return mean_auroc
 
 
 def mean_precision(y_true, y_pred):
 
-    ## TODO: fix
+    y_pred = np.where(y_pred >= 0.5, 1, 0)
     precisions = []
     for i in range(y_true.shape[1]):
-        try:
-            score = precision_score(y_true[:, i], y_pred[:, i])
-            precisions.append(score)
-        except ValueError:
-            score = 0
+        score = precision_score(y_true[:, i], y_pred[:, i], zero_division=0)
+        precisions.append(score)
     mean_precision = np.mean(precisions)
     
     return mean_precision
@@ -84,13 +89,11 @@ def mean_precision(y_true, y_pred):
 
 def mean_recall(y_true, y_pred):
     ## TODO: fix
+    y_pred = np.where(y_pred >= 0.5, 1, 0)
     recalls = []
     for i in range(y_true.shape[1]):
-        try:
-            score = recall_score(y_true[:, i], y_pred[:, i])
-            recalls.append(score)
-        except ValueError:
-            score = 0
+        score = recall_score(y_true[:, i], y_pred[:, i], zero_division=0)
+        recalls.append(score)
     mean_recall = np.mean(recalls)
     
     return mean_recall
@@ -105,25 +108,6 @@ def train():
                                                     save_weights_only=True,
                                                     verbose=1)
     
-
-    class_weights, indiv_class_weights, _ = dataset.get_class_weights(one_cap=True)
-
-    loss_fn = Losses(class_weights, batch_size=dataset.batch_size)
-
-    # unique_labels = list(unique_labels_dict.keys())
-    # unique_labels.remove('No Finding')
-    # unique_labels.sort() ## alphabetical order
-
-    # output_dim = len(unique_labels)
-    chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-                    loss=loss_fn.weighted_binary_crossentropy(),
-    #                   loss_weights=1e5,
-    #                 loss='binary_crossentropy',
-                    metrics=[tf.keras.metrics.AUC(multi_label=True),  mean_auroc, mean_precision, mean_recall, 'binary_accuracy', 'accuracy', 
-                            tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask), 
-                            tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
-                    run_eagerly=True)
-
     epochs = 150
     hist = chexnet.fit(dataset.train_ds,
                 validation_data=dataset.val_ds,
@@ -141,6 +125,23 @@ def train():
     return hist
 
 
+def compile():
+    class_weights, indiv_class_weights, _ = dataset.get_class_weights(one_cap=True)
+
+    loss_fn = Losses(class_weights, batch_size=dataset.batch_size)
+
+    # output_dim = len(unique_labels)
+    chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+                    loss=loss_fn.weighted_binary_crossentropy(),
+    #                   loss_weights=1e5,
+    #                 loss='binary_crossentropy',
+                    #metrics=[tf.keras.metrics.AUC(multi_label=True),  
+                    metrics=[mean_auroc, #mean_precision, mean_recall, 'binary_accuracy', 'accuracy', 
+                            tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask)], 
+                    #        tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
+                    run_eagerly=True)
+
+
 if __name__ == '__main__':
     # os.environ["CUDA_VISIBLE_DEVICES"]=""
     tf.test.is_gpu_available()
@@ -149,35 +150,25 @@ if __name__ == '__main__':
 
     # Instantiate dataset
     dataset = MetaChexDataset()
-    # Get class weights (feed this into model construction for weighted loss)
-    # indiv_class_weights, combo_class_weights = dataset.get_class_weights()
+    
     # Grab training dataset
     train_ds = dataset.train_ds
 
+    # Load CheXNet
     chexnet = load_chexnet(dataset.num_classes_multitask)
-    chexnet.trainable = False
-
+    chexnet.trainable = True
+    
     print(chexnet.summary())
+    
+    # Compile
+    compile()
 
-    # Training
+    # Train
     hist = train()
 
     # Evaluate
-    # m = tf.keras.metrics.BinaryAccuracy()
-    # m.update_state([[1, 0], [1, 0]], [[1,1], [0, 0]])
-    # m.result().numpy()
+    y_test_true = dataset.test_ds.get_y_true() 
+    y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
+    mean_auroc(y_test_true, y_test_pred, eval=True)
 
-    # class_weights, _, _ = dataset.get_class_weights()
-    # chexnet = load_chexnet(dataset.num_classes_multitask)
-    # loss_fn = Losses(class_weights)
-
-    # unique_labels = list(unique_labels_dict.keys())
-    # unique_labels.remove('No Finding')
-    # unique_labels.sort() ## alphabetical order
-
-    # output_dim = len(unique_labels)
-    # chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-    #                 loss=loss_fn.weighted_binary_crossentropy(),
-    #                 #loss='binary_crossentropy',
-    #                 metrics=['accuracy', tf.keras.metrics.Precision(), tf.keras.metrics.Recall()])
 
