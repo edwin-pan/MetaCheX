@@ -18,7 +18,7 @@ np_config.enable_numpy_behavior()
 from metachex.configs.config import *
 from metachex.dataloader import MetaChexDataset
 from metachex.loss import Losses
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, precision_score, recall_score
 
 
 def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_weights.h5', 
@@ -53,7 +53,8 @@ def load_chexnet(output_dim):
     base_model_old.trainable=False
     return base_model_old
 
-def get_mean_auroc(y_true, y_pred):
+def mean_auroc(y_true, y_pred):
+    ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
     aurocs = []
     for i in range(y_true.shape[1]):
         try:
@@ -64,6 +65,36 @@ def get_mean_auroc(y_true, y_pred):
     mean_auroc = np.mean(aurocs)
     
     return mean_auroc
+
+
+def mean_precision(y_true, y_pred):
+
+    ## TODO: fix
+    precisions = []
+    for i in range(y_true.shape[1]):
+        try:
+            score = precision_score(y_true[:, i], y_pred[:, i])
+            precisions.append(score)
+        except ValueError:
+            score = 0
+    mean_precision = np.mean(precisions)
+    
+    return mean_precision
+
+
+def mean_recall(y_true, y_pred):
+    ## TODO: fix
+    recalls = []
+    for i in range(y_true.shape[1]):
+        try:
+            score = recall_score(y_true[:, i], y_pred[:, i])
+            recalls.append(score)
+        except ValueError:
+            score = 0
+    mean_recall = np.mean(recalls)
+    
+    return mean_recall
+
 
 def train():
     checkpoint_path = "training_progress/cp.ckpt" # path for saving model weights
@@ -88,7 +119,7 @@ def train():
                     loss=loss_fn.weighted_binary_crossentropy(),
     #                   loss_weights=1e5,
     #                 loss='binary_crossentropy',
-                    metrics=[tf.keras.metrics.AUC(multi_label=True),  get_mean_auroc, 'binary_accuracy', 'accuracy', 
+                    metrics=[tf.keras.metrics.AUC(multi_label=True),  mean_auroc, mean_precision, mean_recall, 'binary_accuracy', 'accuracy', 
                             tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask), 
                             tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
                     run_eagerly=True)
@@ -124,6 +155,8 @@ if __name__ == '__main__':
     train_ds = dataset.train_ds
 
     chexnet = load_chexnet(dataset.num_classes_multitask)
+    chexnet.trainable = False
+
     print(chexnet.summary())
 
     # Training
