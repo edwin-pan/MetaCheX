@@ -17,6 +17,8 @@ np_config.enable_numpy_behavior()
 from metachex.configs.config import *
 from metachex.dataloader import MetaChexDataset
 from metachex.loss import Losses
+from sklearn.metrics import roc_auc_score
+
 
 def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_weights.h5', 
                             input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3)):
@@ -49,6 +51,18 @@ def load_chexnet(output_dim):
     return chexnet
     
 
+def get_mean_auroc(y_true, y_pred):
+    aurocs = []
+    for i in range(y_true.shape[1]):
+        try:
+            score = roc_auc_score(y_true[:, i], y_pred[:, i])
+            aurocs.append(score)
+        except ValueError:
+            score = 0
+    mean_auroc = np.mean(aurocs)
+    
+    return mean_auroc
+
 def train():
     checkpoint_path = "training_progress/cp.ckpt" # path for saving model weights
     checkpoint_dir = os.path.dirname(checkpoint_path)
@@ -72,7 +86,7 @@ def train():
                     loss=loss_fn.weighted_binary_crossentropy(),
     #                   loss_weights=1e5,
     #                 loss='binary_crossentropy',
-                    metrics=[tf.keras.metrics.AUC(multi_label=True),  'binary_accuracy', 'accuracy', 
+                    metrics=[tf.keras.metrics.AUC(multi_label=True),  get_mean_auroc, 'binary_accuracy', 'accuracy', 
                             tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask), 
                             tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
                     run_eagerly=True)
