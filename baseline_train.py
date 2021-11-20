@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import random
 import os
 import cv2
+from pandas.core.indexes import base
 from tensorflow.keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -26,7 +27,7 @@ def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_wei
     img_input = tf.keras.layers.Input(shape=input_shape)
     base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights=None, 
                                                             input_tensor=img_input, pooling='avg')
-    base_model.trainable = True
+    base_model.trainable = False
 
 
     x = base_model.output
@@ -43,13 +44,14 @@ def load_chexnet(output_dim):
     """
     
     base_model_old = load_chexnet_pretrained()
-    x = base_model_old.layers[-2].output ## remove old prediction layer
+    # x = base_model_old.layers[-2].output ## remove old prediction layer
     
-    ## The prediction head can be more complicated if you want
-    predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation='sigmoid')(x)
-    chexnet = tf.keras.models.Model(inputs=base_model_old.inputs,outputs=predictions)
-    return chexnet
-    
+    # ## The prediction head can be more complicated if you want
+    # predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation='sigmoid')(x)
+    # chexnet = tf.keras.models.Model(inputs=base_model_old.inputs,outputs=predictions)
+    # return chexnet
+    base_model_old.trainable=False
+    return base_model_old
 
 def get_mean_auroc(y_true, y_pred):
     aurocs = []
