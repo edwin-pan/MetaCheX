@@ -335,7 +335,7 @@ class MetaChexDataset():
         
         print("NIH ds sizes", nih_ds_sizes)
         self.steps_per_epoch = (len(nih_datasets[0]) / self.batch_size) * 0.1
-        return nih_datasets ## early return for now
+        # return nih_datasets ## early return for now
 
     
         ## Non-nih data

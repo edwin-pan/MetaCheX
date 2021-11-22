@@ -34,17 +34,18 @@ class Losses():
             y_true_fat = y_true.reshape([-1, y_true.shape[1], 1])
             y_pred_fat = y_pred.reshape([-1, y_pred.shape[1], 1])
 
+            # print(y_true_fat.shape, y_pred_fat.shape)
             return new_weight*bce(y_true_fat, y_pred_fat)
         return weighted_loss
     
     
-    def supcon_label_loss(self, features, labels):
+    def supcon_label_loss(self, labels, features):
         """
         features (ie the z's): [batch_size, num_views, embedding_dim] where num_views = 1 (since we do not augment our anchors)
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
         """
         return tf.reduce_mean(contrastive_loss(features, labels))
-   
+
 
     def supcon_class_loss(self, features, labels):
         """
@@ -54,3 +55,5 @@ class Losses():
         
         
         ## TODO
+        # TODO: Mapping from childen classes to their parent classes
+        # TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is

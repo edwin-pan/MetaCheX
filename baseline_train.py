@@ -38,7 +38,7 @@ def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_wei
     return model
 
 
-def load_chexnet(output_dim):
+def load_chexnet(output_dim, embedding_dim=128):
     """
     output_dim: dimension of output
     """
@@ -47,7 +47,9 @@ def load_chexnet(output_dim):
     x = base_model_old.layers[-2].output ## remove old prediction layer
     
     ## The prediction head can be more complicated if you want
-    predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation='sigmoid')(x)
+    embeddings = tf.keras.layers.Dense(embedding_dim, name='embedding', activation='relu')(x)
+    normalized_embeddings = tf.nn.l2_normalize(embeddings, axis=-1)
+    predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation='sigmoid')(normalized_embeddings) # BASELINE: directly predict
     chexnet = tf.keras.models.Model(inputs=base_model_old.inputs,outputs=predictions)
     return chexnet
     #base_model_old.trainable=False
@@ -100,27 +102,30 @@ def mean_recall(y_true, y_pred):
 
 
 def train():
-    checkpoint_path = "training_progress/cp.ckpt" # path for saving model weights
+    checkpoint_path = "training_progress/cp_best.ckpt" # path for saving model weights
     checkpoint_dir = os.path.dirname(checkpoint_path)
 
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                     save_weights_only=True,
-                                                    verbose=1)
-    
-    epochs = 150
+                                                    verbose=1,
+                                                    monitor='val_mean_auroc',
+                                                    mode='max',
+                                                    save_best_only=True)
+
+    epochs = 10
     hist = chexnet.fit(dataset.train_ds,
                 validation_data=dataset.val_ds,
                 epochs=epochs,
                 steps_per_epoch=dataset.train_steps_per_epoch, ## size(train_ds) * 0.125 * 0.1
                 validation_steps=dataset.val_steps_per_epoch, ## size(val_ds) * 0.125 * 0.2
-                batch_size=dataset.batch_size ## 8
-    # #             class_weight=class_weights,
-    #             callbacks=[cp_callback]
-                    )
+                batch_size=dataset.batch_size, ## 8
+                # class_weight=class_weights,
+                callbacks=[cp_callback]
+                )
 
-    # with open('./trainHistoryDict', 'wb') as file_pi:
-    #         pickle.dump(hist.history, file_pi)
+    with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
+            pickle.dump(hist.history, file_pi)
 
     return hist
 
