@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import argparse
 import pickle
 import os
-from sklearn.metrics import roc_auc_score, precision_score, recall_score
+from sklearn.metrics import roc_auc_score, precision_score, recall_score, average_precision
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -89,28 +89,18 @@ def mean_auroc(y_true, y_pred, eval=False):
     return mean_auroc
 
 
-def mean_precision(y_true, y_pred):
+def average_precision(y_true, y_pred, class_names):
+    test_ap_log_path = os.path.join(".", "average_prec.txt")
+    with open(test_ap_log_path, "w") as f:
+        aps = []
+        for i in range(len(class_names)):
+            ap = average_precision_score(y_true[:, i], y_pred[:, i])
+            aps.append(ap)
+            f.write(f"{class_names[i]}: {ap}\n")
+        mean_ap = np.mean(aps)
+        f.write("-------------------------\n")
+        f.write(f"mean average precision: {mean_ap}\n")
 
-    y_pred = np.where(y_pred >= 0.5, 1, 0)
-    precisions = []
-    for i in range(y_true.shape[1]):
-        score = precision_score(y_true[:, i], y_pred[:, i], zero_division=0)
-        precisions.append(score)
-    mean_precision = np.mean(precisions)
-    
-    return mean_precision
-
-
-def mean_recall(y_true, y_pred):
-    ## TODO: fix
-    y_pred = np.where(y_pred >= 0.5, 1, 0)
-    recalls = []
-    for i in range(y_true.shape[1]):
-        score = recall_score(y_true[:, i], y_pred[:, i], zero_division=0)
-        recalls.append(score)
-    mean_recall = np.mean(recalls)
-    
-    return mean_recall
 
 
 def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
@@ -196,6 +186,7 @@ if __name__ == '__main__':
         y_test_true = dataset.test_ds.get_y_true() 
         y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
         mean_auroc(y_test_true, y_test_pred, eval=True)
+        average_precision(y_test_true, y_test_pred)
 
     # Generate tSNE
     if args.tsne:
