@@ -1,16 +1,12 @@
-import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import random
+import argparse
+import pickle
 import os
-import cv2
-from pandas.core.indexes import base
-from tensorflow.keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
+from sklearn.metrics import roc_auc_score, precision_score, recall_score
+
 import tensorflow as tf
 import tensorflow_addons as tfa
-from glob import glob
-import pickle
-from sklearn.metrics import roc_curve
 from tensorflow.python.ops.numpy_ops import np_config
 np_config.enable_numpy_behavior()
 
@@ -18,7 +14,19 @@ np_config.enable_numpy_behavior()
 from metachex.configs.config import *
 from metachex.dataloader import MetaChexDataset
 from metachex.loss import Losses
-from sklearn.metrics import roc_auc_score, precision_score, recall_score
+from metachex.utils import process_tSNE, plot_tsne
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
+    parser.add_argument('-c', '--ckpt_save_path', default='training_progress/cp_best.ckpt')
+    parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
+    parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
+    parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
+    parser.add_argument('-n', '--num_epochs', default=15, help='Number of epochs to train for')
+    return parser.parse_args()
+
+
+
 
 
 def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_weights.h5', 
@@ -38,7 +46,7 @@ def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_wei
     return model
 
 
-def load_chexnet(output_dim):
+def load_chexnet(output_dim, embedding_dim=128):
     """
     output_dim: dimension of output
     """
@@ -47,12 +55,18 @@ def load_chexnet(output_dim):
     x = base_model_old.layers[-2].output ## remove old prediction layer
     
     ## The prediction head can be more complicated if you want
-    predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation='sigmoid')(x)
+    embeddings = tf.keras.layers.Dense(embedding_dim, name='embedding', activation='relu')(x)
+    normalized_embeddings = tf.nn.l2_normalize(embeddings, axis=-1)
+    predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation='sigmoid')(normalized_embeddings) # BASELINE: directly predict
     chexnet = tf.keras.models.Model(inputs=base_model_old.inputs,outputs=predictions)
     return chexnet
     #base_model_old.trainable=False
     #return base_model_old
 
+def get_embedding_model(model):
+    x = model.layers[-2].output
+    chexnet_embedder = tf.keras.models.Model(inputs = model.input, outputs = x)
+    return chexnet_embedder
 
 def mean_auroc(y_true, y_pred, eval=False):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
@@ -99,28 +113,28 @@ def mean_recall(y_true, y_pred):
     return mean_recall
 
 
-def train():
-    checkpoint_path = "training_progress/cp.ckpt" # path for saving model weights
+def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
     checkpoint_dir = os.path.dirname(checkpoint_path)
-
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                     save_weights_only=True,
-                                                    verbose=1)
-    
-    epochs = 150
+                                                    verbose=1,
+                                                    monitor='val_mean_auroc',
+                                                    mode='max',
+                                                    save_best_only=True)
+
     hist = chexnet.fit(dataset.train_ds,
                 validation_data=dataset.val_ds,
-                epochs=epochs,
+                epochs=num_epochs,
                 steps_per_epoch=dataset.train_steps_per_epoch, ## size(train_ds) * 0.125 * 0.1
                 validation_steps=dataset.val_steps_per_epoch, ## size(val_ds) * 0.125 * 0.2
-                batch_size=dataset.batch_size ## 8
-    # #             class_weight=class_weights,
-    #             callbacks=[cp_callback]
-                    )
+                batch_size=dataset.batch_size, ## 8
+                # class_weight=class_weights,
+                callbacks=[cp_callback]
+                )
 
-    # with open('./trainHistoryDict', 'wb') as file_pi:
-    #         pickle.dump(hist.history, file_pi)
+    with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
+            pickle.dump(hist.history, file_pi)
 
     return hist
 
@@ -143,6 +157,7 @@ def compile():
 
 
 if __name__ == '__main__':
+    args = parse_args()
     # os.environ["CUDA_VISIBLE_DEVICES"]=""
     tf.test.is_gpu_available()
     physical_devices = tf.config.experimental.list_physical_devices('GPU')
@@ -163,12 +178,42 @@ if __name__ == '__main__':
     # Compile
     compile()
 
-    # Train
-    hist = train()
+    # Get weights
+    if args.pretrained is None:
+        print("[INFO] Beginning Fine Tuning")
+        # Train
+        hist = train(args.num_epochs, args.ckpt_save_path)
+        record_dir = os.path.dirname(args.ckpt_save_path)
+    else:
+        print("[INFO] Loading weights")
+        # Load weights
+        chexnet.load_weights(args.pretrained)
+        record_dir = os.path.dirname(args.pretrained)
 
     # Evaluate
-    y_test_true = dataset.test_ds.get_y_true() 
-    y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
-    mean_auroc(y_test_true, y_test_pred, eval=True)
+    if args.evaluate:
+        print("[INFO] Evaluating performance")
+        y_test_true = dataset.test_ds.get_y_true() 
+        y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
+        mean_auroc(y_test_true, y_test_pred, eval=True)
 
+    # Generate tSNE
+    if args.tsne:
+        print("[INFO] Generating tSNE plots")
+        chexnet_embedder = get_embedding_model(chexnet)
+        tsne_dataset = MetaChexDataset(shuffle_train=False)
 
+        embedding_save_path = os.path.join(record_dir, 'embeddings.npy')
+        # generating embeddings can take some time. Load if possible
+        if os.path.isfile(embedding_save_path):
+            print(f"[INFO] Embeddings already processed. Loading from {embedding_save_path}")
+            training_embeddings = np.load(embedding_save_path)
+        else:
+            print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
+            training_embeddings = chexnet_embedder.predict(tsne_dataset.train_ds, verbose=1)
+            np.save(embedding_save_path, training_embeddings)
+
+        tsne_feats = process_tSNE(training_embeddings)
+        tsne_labels = tsne_dataset.train_ds.get_y_true()
+
+        plot_tsne(tsne_feats, tsne_labels, lables_names=tsne_dataset.unique_labels)

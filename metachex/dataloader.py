@@ -98,7 +98,7 @@ class ImageSequence(Sequence):
 
 
 class MetaChexDataset():
-    def __init__(self):
+    def __init__(self, shuffle_train=True):
         self.batch_size = 8
         
         # Reads in data.pkl file (mapping of paths to unformatted labels)
@@ -121,7 +121,8 @@ class MetaChexDataset():
 
         print("[INFO] constructing tf train/val/test vars; shuffle & batch")
          ## already shuffled and batched
-        [self.train_ds, self.val_ds, self.test_ds] = self.get_generator_splits(self.df_condensed)
+        print("[INFO] shuffle & batch")
+        [self.train_ds, self.val_ds, self.test_ds] = self.get_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
 
         print('[INFO] initialized')
         return
@@ -214,7 +215,7 @@ class MetaChexDataset():
         return unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums
 
 
-    def get_generator_splits(self, df, split=(0.8, 0.1, 0.1)):
+    def get_generator_splits(self, df, split=(0.8, 0.1, 0.1), shuffle_train=True):
         """Splitting with tensorflow sequence instead of dataset"""
         
         ## Deal with NIH datasplit first
@@ -274,7 +275,7 @@ class MetaChexDataset():
             
             
             if ds_type == 'train':
-                shuffle_on_epoch_end = True
+                shuffle_on_epoch_end = shuffle_train
                 factor = 0.1
             else:
                 shuffle_on_epoch_end = False
@@ -431,9 +432,9 @@ class MetaChexDataset():
         else:
             df = pd.read_pickle(path)
             
-            unique_labels = list(self.unique_labels_dict.keys())
+            self.unique_labels = list(self.unique_labels_dict.keys())
         
-        self.num_classes_multitask = len(unique_labels) - 1 ## remove no finding
+        self.num_classes_multitask = len(self.unique_labels) - 1 ## remove no finding
         self.num_classes_multiclass = max(df['label_num_multi'].values) + 1
 
         return df
