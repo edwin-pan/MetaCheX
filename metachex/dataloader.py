@@ -119,52 +119,67 @@ class MetaChexDataset():
         self.df_condensed = self.generate_labels(self.df_condensed, 'data_condensed.pkl')
         self.df_condensed['label_multitask'][1]
 
-        print("[INFO] constructing tf train/val/test vars")
-#         [self.train_ds, self.val_ds, self.test_ds] = self.get_ds_splits(self.df_condensed)
+        print("[INFO] constructing tf train/val/test vars; shuffle & batch")
          ## already shuffled and batched
-        print("[INFO] shuffle & batch")
         [self.train_ds, self.val_ds, self.test_ds] = self.get_generator_splits(self.df_condensed)
-
-#         print("[INFO] shuffle & batch")
-#         self.train_ds = self.shuffle_and_batch(self.train_ds)
-#         self.val_ds = self.shuffle_and_batch(self.val_ds)
-#         self.test_ds = self.shuffle_and_batch(self.test_ds)
 
         print('[INFO] initialized')
         return
 
-
-    def load_and_preprocess_image(self, path, label):
+    
+    def get_child_to_parent_mapping(self):
         """
-        path: path to image
+        Get dict of child index to list of parent indices for all classes (combo and indiv)
         """
-        image = tf.io.read_file(path) 
-        image_copy = tf.io.read_file(path)
         
-        image_copy = tf.convert_to_tensor(image_copy)
-        s = image_copy.shape
-        if s.ndims is not None and s.ndims < 4:
-            image = tf.io.decode_png(image, channels=1) 
-            image = tf.image.grayscale_to_rgb(image)
-            #grayscale
-        else:
-            image = tf.io.decode_png(image, channels=3)
-       
+        ## Round about way to get a copy of 2 columns
+        df_labels = pd.DataFrame(self.df_condensed['label_num_multi'].values, columns=['label_num_multi'])
+        df_labels['label_str'] = self.df_condensed['label_str'].values
         
+        ## Get all the multitask indices for each row
+        label_multitask_arr = np.array(self.df_condensed['label_multitask'].to_list())
+        row_indices, multitask_indices = np.where(label_multitask_arr == 1)
 
-#         try: 
-#             print("Attempting to read rgb")
-#             image = tf.io.decode_png(image, channels=3)
-#         except Warning as e:
-#             print("Image is grayscale. Decode to grayscale then convert to rgb")
-#             image = tf.io.decode_png(image, channels=1) ## grayscale
-#             image = tf.image.grayscale_to_rgb(image)
+        df_labels['multitask_indices'] = 0
+        df_labels['multitask_indices'] = df_labels['multitask_indices'].astype(object)
 
-        image = tf.image.resize(image, [IMAGE_SIZE, IMAGE_SIZE], method='lanczos3')
-        image = image / 255 ## pixels in [0, 255] -- normalize to [0, 1]
-        return image, label
+        indiv_parent_multitask_to_multiclass = {} ## multitask index to multiclass label dict
 
+        for i, row in df_labels.iterrows():
+            ## get list of multitask indices associated with the multiclass label
+            indices_for_row = np.where(row_indices == i)
+            multitask_indices_for_row = multitask_indices[indices_for_row]
+            df_labels.at[i, 'multitask_indices'] = multitask_indices_for_row
 
+            if multitask_indices_for_row.shape[0] == 1: ## indiv class
+                parent_label_num_multi = row['label_num_multi']
+                if multitask_indices_for_row[0] not in indiv_parent_multitask_to_multiclass:
+                    print(row['label_str'])
+                    indiv_parent_multitask_to_multiclass[multitask_indices_for_row[0]] = parent_label_num_multi
+
+        print("Individual classes with examples: ")
+        print(indiv_parent_multitask_to_multiclass.keys())
+        print(f"Count: {len(indiv_parent_multitask_to_multiclass.keys())}")
+
+        
+        ## Get the parent multiclass labels if the indiv class exists
+        child_to_parent_map = {}
+
+        for i, row in df_labels.iterrows():
+            parents = []
+            if row['multitask_indices'].shape[0] > 1: ## combo
+                for ind in row['multitask_indices']:
+                    if ind in indiv_parent_multitask_to_multiclass:
+                        parent_label_num_multi = indiv_parent_multitask_to_multiclass[ind]
+                        parents.append(parent_label_num_multi)
+            
+            child_multiclass_ind = row['label_num_multi']
+            if child_multiclass_ind not in child_to_parent_map and parents != []:
+                child_to_parent_map[child_multiclass_ind] = parents
+
+        self.child_to_parent_map = child_to_parent_map
+        
+        
     def get_data_stats(self, df):
         unique_labels_dict = {} ## keys are str
         unique_combos_dict = {} ## keys are tuples of str
@@ -252,44 +267,6 @@ class MetaChexDataset():
         df_other_splits[1].drop_duplicates(subset='image_path', inplace=True)
         df_other_splits[2].drop_duplicates(subset='image_path', inplace=True)
         
-        
-        ## To see which labels are represented in training set
-        df_combined = nih_dataframes[0].append(df_other_splits[0])
-        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
-        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
-        untrained_classes = np.where(df_multitask_labels_sum == 0)
-        print(df_multitask_labels_sum)
-        print(f'classes not trained on: {untrained_classes}')
-        
-        df_combined = nih_dataframes[1].append(df_other_splits[1])
-        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
-        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
-        unvalidated_classes = np.where(df_multitask_labels_sum == 0)
-        print(df_multitask_labels_sum)
-        print(f'classes not validated on: {unvalidated_classes}')
-        
-        df_combined = nih_dataframes[2].append(df_other_splits[2])
-        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
-        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
-        untested_classes = np.where(df_multitask_labels_sum == 0)
-        print(df_multitask_labels_sum)
-        print(f'classes not tested on: {untested_classes}')
-        
-        
-#         df_multitask_labels = np.array(df['label_multitask'].to_list())
-#         df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
-#         print(df_multitask_labels_sum)
-#         classes_that_need_to_be_augmented = np.where(df_multitask_labels_sum < 100)
-#         print(df_multitask_labels_sum)
-#         print(f'classes that need to be augmented: {classes_that_need_to_be_augmented}')
-        
-        ## [10, 11, 12, 14, 16, 17, 20, 23, 24, 25, 26]
-        
-        
-        
-        #########
-        
-        
         full_datasets = []
         
         for i, ds_type in enumerate(['train', 'val', 'test']):
@@ -313,61 +290,6 @@ class MetaChexDataset():
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
             ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end)
             full_datasets.append(ds)
-        
-        return full_datasets
-    
-    ## Train-val-test splits
-    def get_ds_splits(self, df, split=(0.7, 0.1, 0.2)):
-        """
-        df: df of nih data; columns: 'image_path', 'label', 'dataset', 'label_str', 'label_multitask'
-        """
-        
-        ## Deal with NIH datasplit first
-        nih_datasets = []
-        nih_ds_sizes = []
-        for ds_type in ['train', 'val', 'test']:
-            df_nih = df[df['dataset'] == ds_type]
-            ds = tf.data.Dataset.from_tensor_slices((df_nih['image_path'], 
-                                                    df_nih['label_multitask'].to_list()))
-            nih_ds_sizes.append(len(ds))
-            nih_datasets.append(ds)
-        
-        
-        print("NIH ds sizes", nih_ds_sizes)
-        self.steps_per_epoch = (len(nih_datasets[0]) / self.batch_size) * 0.1
-        return nih_datasets ## early return for now
-
-    
-        ## Non-nih data
-        df_other = df[df['dataset'].isna()]
-        other_count = len(df_other)
-        total_count = len(df)
-        ds = tf.data.Dataset.from_tensor_slices((df_other['image_path'], df_other['label_multitask'].to_list()))
-        ds = ds.shuffle(other_count, reshuffle_each_iteration=False)
-        train_count = max(int(total_count * split[0]) - nih_ds_sizes[0], 0)
-        val_count = max(int(total_count * split[1]) - nih_ds_sizes[1], 0)
-        
-        train_ds = ds.take(train_count)
-        val_ds = ds.skip(train_count).take(val_count)
-        test_ds = ds.skip(train_count + val_count) 
-        
-        other_datasets = [train_ds, val_ds, test_ds]
-        other_ds_sizes = [len(d) for d in other_datasets]
-        print("Other ds sizes", other_ds_sizes)
-        
-        full_datasets = []
-        total_samples = 0
-        for i in range(3):
-            ds = other_datasets[i].concatenate(nih_datasets[i])
-            print(len(ds))
-            full_datasets.append(ds)
-            total_samples += len(ds)
-            
-        print("Total samples: ", total_samples)
-        
-        full_ds_split = [len(d) / total_count for d in full_datasets]
-        print("True split: ", full_ds_split)
-        self.steps_per_epoch = (len(full_datasets[0]) / self.batch_size) * 0.1
         
         return full_datasets
 
@@ -487,20 +409,6 @@ class MetaChexDataset():
             unique_labels = list(self.unique_labels_dict.keys())
             unique_labels.remove('No Finding')
             unique_labels.sort() ## alphabetical order
-            #unique_labels=['Atelectasis',
-            #               'Cardiomegaly',
-            #               'Effusion',
-            #               'Infiltration',
-            #               'Mass',
-            #               'Nodule',
-            #               'Pneumonia',
-            #               'Pneumothorax',
-            #               'Consolidation',
-            #               'Edema',
-            #               'Emphysema',
-            #               'Fibrosis',
-            #               'Pleural_Thickening',
-            #               'Hernia']
             self.unique_labels = unique_labels
             df['label_multitask'] = 0
             df['label_multitask'] = df['label_multitask'].astype('object')
@@ -568,14 +476,6 @@ class MetaChexDataset():
         
         return indiv_class_probs, combo_class_probs
     
-
-    def shuffle_and_batch(self, ds):
-        ds = ds.cache()
-        ds = ds.shuffle(buffer_size=100)
-        ds = ds.map(self.load_and_preprocess_image) ## maps the preprocessing step
-        ds = ds.batch(self.batch_size)
-#         ds = ds.prefetch(buffer_size=tf.data.AUTOTUNE)
-        return ds
 
 
 if __name__ == '__main__':
