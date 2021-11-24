@@ -1,18 +1,28 @@
 import tensorflow as tf
 import numpy as np
 import sys
+import pickle
 
 sys.path.append('../') # importing in unit tests
 from supcon.losses import contrastive_loss
 
 class Losses():
     
-    def __init__(self, class_weights=None, child_to_parent_map=None, batch_size=8):
+<<<<<<< Updated upstream
+    def __init__(self, class_weights=None, label_map=None, train_stage=None, emb_path="training_progress/parent_emb.pkl", batch_size=8):
+>>>>>>> Stashed changes
         """
         child_to_parent_map: mapping of multiclass labels to a list of their parents
                 format: {(child multiclass label (int), child label_str) : list[parent multiclass labels (int)]}
         """
-        
+        self.embedding_map = None
+        if train_stage == 1: # Save parent embeddings [Need to save with callback]
+            self.embedding_map = dict(zip(list(range(0,27)), [None]*27))
+            
+        elif train_stage == 2: # Load & update embedding_map 
+            with open(emb_path, 'rb') as handle:
+                self.embedding_map = pickle.load(handle)
+            
         self.class_weights = class_weights
         self.batch_size = batch_size
         
@@ -59,12 +69,25 @@ class Losses():
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded (multiclass)
         """
         
+<<<<<<< Updated upstream
         def supcon_class_loss_inner(labels, features):
             return class_contrastive_loss(self, features, labels)
+
+>>>>>>> Stashed changes
         
         return supcon_class_loss_inner
 
     
     def class_contrastive_loss(self, features, labels):
+        
+        # Assuming self.label_map contains one-hot encoded labels: parents mapping
+        
+        # return tensor of tensors -> [[list of parents]]
+       
+        
+        # for parents in batch, find mean of parent embeddings corresponding to each label 
+        
+        
+        # for children in batch, find parent embeddings and compute average embedding + loss v
         ## TODO
         # TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is
