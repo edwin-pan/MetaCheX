@@ -53,13 +53,20 @@ class Losses():
         return supcon_label_loss_inner
 
 
-    def supcon_class_loss(self, labels, features):
+    def supcon_class_loss(self)
         """
-        features (ie the z's): [batch_size, num_views, embedding_dim] where num_views = 1 (since we do not augment our anchors)
+        features (ie the z's): [batch_size, embedding_dim]
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded (multiclass)
         """
         
+        def supcon_class_loss_inner(labels, features):
+            features = tf.expand_dims(features, axis=1)
+            return class_contrastive_loss(self, features, labels)
         
-        ## TODO
-        # TODO: Mapping from childen classes to their parent classes
-        # TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is
+        return supcon_class_loss_inner
+
+    
+    def class_contrastive_loss(self, features, labels):
+            ## TODO
+            # TODO: Mapping from childen classes to their parent classes
+            # TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is
