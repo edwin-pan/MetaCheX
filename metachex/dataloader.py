@@ -127,10 +127,9 @@ class MetaChexDataset():
          ## already shuffled and batched
         print("[INFO] shuffle & batch")
         if multiclass:
-            get_generator_splits = self.get_multiclass_generator_splits
+            [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
         else:
-            get_generator_splits = self.get_multitask_generator_splits
-        [self.train_ds, self.val_ds, self.test_ds] = get_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
+            [self.train_ds, self.val_ds, self.test_ds] = self.get_multitask_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
 
         print('[INFO] initialized')
         return
@@ -223,7 +222,7 @@ class MetaChexDataset():
         return unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums
     
     
-    def get_multiclass_generator_splits(self, df, split=(0.8, 0.1, 0.1), shuffle_train=True):
+    def get_multiclass_generator_splits(self, df, split=(0.8, 0.2), shuffle_train=True):
         """Splitting with tensorflow sequence instead of dataset"""
         
 #         print(df[df['label_num_multi'] == 322]['label_str'])
@@ -233,10 +232,14 @@ class MetaChexDataset():
         nih_dataframes = []
         nih_df_sizes = []
         
-        for ds_type in ['train', 'val', 'test']:
-            df_nih = df[df['dataset'] == ds_type]
-            nih_df_sizes.append(len(df_nih))
-            nih_dataframes.append(df_nih)
+        df_nih_train = df[df['dataset'] == 'train']
+        df_nih_val = df[df['dataset'] == 'val']
+        nih_df_sizes.append(len(df_nih_train) + len(df_nih_val))
+        nih_dataframes.append(df_nih_train.append(df_nih_val).reset_index(drop=True))
+        
+        df_nih_test = df[df['dataset'] == 'test']
+        nih_df_sizes.append(len(df_nih_test))
+        nih_dataframes.append(df_nih_test)
         
         # ## Non-nih data
         
@@ -245,7 +248,7 @@ class MetaChexDataset():
         df_other = df[df['dataset'].isna()]
         df_other = sklearn.utils.shuffle(df_other) # shuffle
         
-        df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
+        df_other_splits = [pd.DataFrame(columns=df.columns)] * 2
         
         image_paths, multiclass_labels = df_other['image_path'].values, df_other['label_num_multi'].values
         
@@ -259,47 +262,35 @@ class MetaChexDataset():
                 print(i)
             
             if 0 < len(df_subsplit) < 5: ## make them all test
-                val_idx = 0
                 test_idx = 0
             else:
-                val_idx = int(len(df_subsplit) * split[0])
-                test_idx = int(len(df_subsplit) * (split[0] + split[1]))
-            df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(val_idx))
-            df_other_splits[1] = df_other_splits[1].append(df_subsplit[val_idx:test_idx])
-            df_other_splits[2] = df_other_splits[2].append(df_subsplit[test_idx:])
+                test_idx = int(len(df_subsplit) * split[0])
+            df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(test_idx))
+            df_other_splits[1] = df_other_splits[1].append(df_subsplit[test_idx:])
         
         df_combined = nih_dataframes[0].append(df_other_splits[0])
         untrained_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
         print(f'classes not trained on: {untrained_classes}')
         
         df_combined = nih_dataframes[1].append(df_other_splits[1])
-        unvalidated_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
-        print(f'classes not validated on: {unvalidated_classes}, num: {len(unvalidated_classes)}')
-        
-        df_combined = nih_dataframes[2].append(df_other_splits[2])
         untested_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
         print(f'classes not tested on: {untested_classes}, num: {len(untested_classes)}')
 #         exit(1)
         
         full_datasets = []
         
-        for i, ds_type in enumerate(['train', 'val', 'test']):
+        for i, ds_type in enumerate(['train', 'test']):
+            
             df_combined = nih_dataframes[i].append(df_other_splits[i])
             
             
             if ds_type == 'train':
                 shuffle_on_epoch_end = shuffle_train
                 factor = 0.1
+                steps = int(len(df_combined) / self.batch_size * factor)
+                self.train_steps_per_epoch = steps
             else:
                 shuffle_on_epoch_end = False
-                factor = 0.2
-            
-            steps = int(len(df_combined) / self.batch_size * factor)
-            
-            if ds_type == 'train':
-                self.train_steps_per_epoch = steps
-            elif ds_type == 'val':
-                self.val_steps_per_epoch = steps
                 
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
             ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end)

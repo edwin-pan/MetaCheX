@@ -7,41 +7,66 @@ from metachex.configs.config import *
 from metachex.loss import Losses
 from metachex.dataloader import MetaChexDataset
 from metachex.utils import *
+from sklearn.metrics.pairwise import euclidean_distances
 
+
+class NearestNeighbour():
+    
+    
+    def __init__(self, class_names, embedding_dim):
+        self.prototypes = np.zeros((len(class_names), embedding_dim))
+        self.class_names = class_names
+    
+    def calculate_prototypes(self, embeddings):
+        """
+        embeddings: list of matrices of embeddings (list of length num_classes; matrix size [M, D], where M = # examples)
+        """
+        
+        for i in range(len(embeddings)):
+            self.prototypes[i] = np.mean(embeddings[i], axis=0)
+                                 
+    
+    def get_nearest_neighbour(self, queries):
+        """
+        queries: [batch_size, embedding_dim]
+        
+        return:
+        pred: [batch_size, num_prototypes]
+        """
+        
+        distances = euclidean_distances(queries, self.prototypes)
+        pred = np.argmin(distances, axis=1)
+        
+        return pred
+    
 
 
 def compile():
     loss_fn = Losses()
 
-    chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+    chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
                     loss=loss_fn.supcon_label_loss(),
-                    metrics=[mean_auroc], 
                     run_eagerly=True)
                   
 
-def train(num_epochs=15, checkpoint_path="training_progress_supcon/cp_best.ckpt"):
+def train_model(num_epochs=15, checkpoint_path="training_progress_supcon/cp_best.ckpt"):
     checkpoint_dir = os.path.dirname(checkpoint_path)
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                     save_weights_only=True,
-                                                    verbose=1,
-                                                    monitor='val_mean_auroc',
-                                                    mode='max',
-                                                    save_best_only=True)
+                                                    verbose=1)
 
-    hist = chexnet.fit(dataset.train_ds,
-                validation_data=dataset.val_ds,
+    hist = chexnet_encoder.fit(dataset.train_ds,
                 epochs=num_epochs,
                 steps_per_epoch=dataset.train_steps_per_epoch, ## size(train_ds) * 0.125 * 0.1
-                validation_steps=dataset.val_steps_per_epoch, ## size(val_ds) * 0.125 * 0.2
-                batch_size=dataset.batch_size, ## 8
+                batch_size=32, ## 8
                 callbacks=[cp_callback]
                 )
 
     with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
             pickle.dump(hist.history, file_pi)
 
-    return hist        
+    return hist     
         
         
 if __name__ == '__main__':
@@ -55,11 +80,11 @@ if __name__ == '__main__':
     dataset = MetaChexDataset(multiclass=True)
 
     # Load CheXNet
-    chexnet = load_chexnet(1) ## any number will do, since we get rid of final dense layer
-    chexnet = get_embedding_model(chexnet)
-    chexnet.trainable = True
+    chexnet_encoder = load_chexnet(1) ## any number will do, since we get rid of final dense layer
+    chexnet_encoder = get_embedding_model(chexnet_encoder)
+    chexnet_encoder.trainable = True
     
-    print(chexnet.summary())
+    print(chexnet_encoder.summary())
     
     # Compile
     compile()
@@ -69,26 +94,30 @@ if __name__ == '__main__':
     if args.pretrained is None:
         print("[INFO] Beginning Fine Tuning")
         # Train
-        hist = train(args.num_epochs)
+        hist = train_model(args.num_epochs)
         record_dir = os.path.dirname(checkpoint_path)
     else:
         print("[INFO] Loading weights")
         # Load weights
-        chexnet.load_weights(args.pretrained)
+        chexnet_encoder.load_weights(args.pretrained)
         record_dir = os.path.dirname(args.pretrained)
 
     # Evaluate
+    nn = NearestNeighbour(embeddings=train_embeddings, ...)
+    nn.calculate_prototypes()
+    
     if args.evaluate:
         print("[INFO] Evaluating performance")
         y_test_true = dataset.test_ds.get_y_true() 
-        y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
-        mean_auroc(y_test_true, y_test_pred, eval=True)
-        average_precision(y_test_true, y_test_pred)
+        y_test_embeddings = chexnet_encoder.predict(dataset.test_ds, verbose=1)
+        y_pred = nn.get_nearest_neighbour(y_test_embeddings)
+        
+        ## CONTINUE
+        
 
     # Generate tSNE
     if args.tsne:
         print("[INFO] Generating tSNE plots")
-        chexnet_embedder = get_embedding_model(chexnet)
         tsne_dataset = MetaChexDataset(shuffle_train=False)
 
         embedding_save_path = os.path.join(record_dir, 'embeddings_supcon.npy')
@@ -98,7 +127,7 @@ if __name__ == '__main__':
             training_embeddings = np.load(embedding_save_path)
         else:
             print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
-            training_embeddings = chexnet_embedder.predict(tsne_dataset.train_ds, verbose=1)
+            training_embeddings = chexnet_encoder.predict(tsne_dataset.train_ds, verbose=1)
             np.save(embedding_save_path, training_embeddings)
 
         tsne_feats = process_tSNE(training_embeddings)
