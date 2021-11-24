@@ -34,8 +34,8 @@ def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
                 callbacks=[cp_callback]
                 )
 
-    with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
-            pickle.dump(hist.history, file_pi)
+#     with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
+#             pickle.dump(hist.history, file_pi)
 
     return hist
 
@@ -45,7 +45,6 @@ def compile():
 
     loss_fn = Losses(class_weights, batch_size=dataset.batch_size)
 
-    # output_dim = len(unique_labels)
     chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
                     loss=loss_fn.weighted_binary_crossentropy(),
     #                   loss_weights=1e5,
@@ -96,8 +95,8 @@ if __name__ == '__main__':
         print("[INFO] Evaluating performance")
         y_test_true = dataset.test_ds.get_y_true() 
         y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
-        mean_auroc(y_test_true, y_test_pred, eval=True)
-        average_precision(y_test_true, y_test_pred)
+        mean_auroc(y_test_true, y_test_pred, dataset, eval=True)
+        average_precision(y_test_true, y_test_pred, dataset)
 
     # Generate tSNE
     if args.tsne:

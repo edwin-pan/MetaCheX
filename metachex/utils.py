@@ -20,14 +20,14 @@ def parse_args():
     parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
-    parser.add_argument('-n', '--num_epochs', default=15, help='Number of epochs to train for')
+    parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
     return parser.parse_args()
 
 def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_weights.h5', 
                             input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3)):
 
     img_input = tf.keras.layers.Input(shape=input_shape)
-    base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights=None, 
+    base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights=None,  ## uncomment
                                                             input_tensor=img_input, pooling='avg')
     base_model.trainable = False
 
@@ -35,7 +35,7 @@ def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_wei
     x = base_model.output
     predictions = tf.keras.layers.Dense(len(class_names), activation="sigmoid", name="predictions")(x)
     model = tf.keras.models.Model(inputs=img_input, outputs=predictions)
-    model.load_weights(weights_path)
+    model.load_weights(weights_path) ## uncomment
 
     return model
 
@@ -62,7 +62,7 @@ def get_embedding_model(model):
     chexnet_embedder = tf.keras.models.Model(inputs = model.input, outputs = x)
     return chexnet_embedder
 
-def mean_auroc(y_true, y_pred, eval=False):
+def mean_auroc(y_true, y_pred, dataset, eval=False):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
     aurocs = []
     with open("test_log.txt", "w") as f:
@@ -83,18 +83,19 @@ def mean_auroc(y_true, y_pred, eval=False):
     return mean_auroc
 
 
-def average_precision(y_true, y_pred, class_names):
+def average_precision(y_true, y_pred, dataset):
     test_ap_log_path = os.path.join(".", "average_prec.txt")
     with open(test_ap_log_path, "w") as f:
         aps = []
-        for i in range(len(class_names)):
+        for i in range(y_true.shape[1]):
             ap = average_precision_score(y_true[:, i], y_pred[:, i])
             aps.append(ap)
-            f.write(f"{class_names[i]}: {ap}\n")
+            f.write(f"{dataset.unique_labels[i]}: {ap}\n")
         mean_ap = np.mean(aps)
         f.write("-------------------------\n")
         f.write(f"mean average precision: {mean_ap}\n")
 
+        
 def process_tSNE(features, learning_rate=10, perplexity=20):
     """ Computes tNSE embedding as array"""
     tsne = manifold.TSNE(n_components=2, init="random", learning_rate=learning_rate, random_state=0, perplexity=perplexity)

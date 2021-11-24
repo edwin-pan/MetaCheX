@@ -24,7 +24,7 @@ class ImageSequence(Sequence):
 
     def __init__(self, df, batch_size=8,
                  target_size=(224, 224), augmenter=None, verbose=0, steps=None,
-                 shuffle_on_epoch_end=True, random_state=271):
+                 shuffle_on_epoch_end=True, random_state=271, num_classes=27, multiclass=False):
         """
         :param df: dataframe of all the images for a specific split (train, val or test)
         :param batch_size: int
@@ -40,6 +40,8 @@ class ImageSequence(Sequence):
         self.verbose = verbose
         self.shuffle = shuffle_on_epoch_end
         self.random_state = random_state
+        self.num_classes = num_classes
+        self.multiclass = multiclass
         self.prepare_dataset()
         if steps is None:
             self.steps = int(np.ceil(len(self.x_path) / float(self.batch_size)))
@@ -88,7 +90,11 @@ class ImageSequence(Sequence):
 
     def prepare_dataset(self):
         df = self.df.sample(frac=1., random_state=self.random_state)
-        self.x_path, self.y = df['image_path'], np.array(df['label_multitask'].to_list())
+        self.x_path = df['image_path']
+        if self.multiclass:
+            self.y = np.eye(self.num_classes)[df['label_num_multi'].values.astype(int)]
+        else:
+            self.y = np.array(df['label_multitask'].to_list())
         print("self.y.shape: ", self.y.shape)
 
     def on_epoch_end(self):
@@ -98,11 +104,16 @@ class ImageSequence(Sequence):
 
 
 class MetaChexDataset():
-    def __init__(self, shuffle_train=True, multiclass=False):
-        self.batch_size = 8
+    def __init__(self, shuffle_train=True, multiclass=False, batch_size=8):
+        self.batch_size = batch_size
+        self.multiclass = multiclass
         
         # Reads in data.pkl file (mapping of paths to unformatted labels)
         self.data_path = os.path.join(PATH_TO_DATA_FOLDER, 'data.pkl')
+        
+        ## Child to parent map and num_parents_list path
+        self.child_to_parent_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'childParent.pkl')
+        self.num_parents_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'num_parents_list.pkl')
         
         # Pre-processing
         print("[INFO] pre-processing")
@@ -117,13 +128,13 @@ class MetaChexDataset():
         self.unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums = self.get_data_stats(self.df_condensed)
 #         print("Generated labels: ", len(list(self.unique_labels_dict.keys())))
         self.df_condensed = self.generate_labels(self.df_condensed, 'data_condensed.pkl')
-        self.df_condensed['label_multitask'][1]
         
         if multiclass:
             print("[INFO] get child-to-parents mapping")
             self.get_child_to_parent_mapping()
+            self.get_num_parents_to_count_df()
 
-        print("[INFO] constructing tf train/val/test vars; shuffle & batch")
+        print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
         print("[INFO] shuffle & batch")
         if multiclass:
@@ -135,29 +146,58 @@ class MetaChexDataset():
         return
 
     
+    def get_num_parents_to_count_df(self):
+        
+        df = pd.DataFrame(columns=['num_parents', 'num_examples'])
+        
+        df['num_parents'] = np.unique(self.num_parents_list)
+        
+        counts = []
+        for num in df['num_parents'].values:
+            count = np.where(self.num_parents_list == num)[0].shape[0]
+            counts.append(count)
+            
+        df['num_examples'] = counts
+        
+        print(df)
+    
+    
     def get_child_to_parent_mapping(self):
         """
         Get dict of child index to list of parent indices for all classes (combo and indiv)
         """
         
-        ## Round about way to get a copy of 2 columns
+        if os.path.isfile(self.child_to_parent_map_path): ## load from pickle
+            with open(self.child_to_parent_map_path, 'rb') as file:
+                self.child_to_parent_map = pickle.load(file)
+            
+            ## Dump to pickle
+            with open(self.num_parents_list_path, 'wb') as file:
+                self.num_parents_list = pickle.load(file)
+            
+            return
+        
+        ## Roundabout way to get a copy of df_condensed (since col 'multitask_indices' has lists)
         df_labels = pd.DataFrame(self.df_condensed['label_num_multi'].values, columns=['label_num_multi'])
         df_labels['label_str'] = self.df_condensed['label_str'].values
         
         ## Get all the multitask indices for each row
-        label_multitask_arr = np.array(self.df_condensed['label_multitask'].to_list())
+        label_multitask_arr = np.array(self.df_condensed['label_multitask'].to_list()) ## [len(df_condensed), num_indiv_classes]
         row_indices, multitask_indices = np.where(label_multitask_arr == 1)
 
         df_labels['multitask_indices'] = 0
         df_labels['multitask_indices'] = df_labels['multitask_indices'].astype(object)
 
         indiv_parent_multitask_to_multiclass = {} ## multitask index to multiclass label dict
-
+        
+        num_parents = [] ## list of number of parents for each row
+        
         for i, row in df_labels.iterrows():
             ## get list of multitask indices associated with the multiclass label
             indices_for_row = np.where(row_indices == i)
             multitask_indices_for_row = multitask_indices[indices_for_row]
             df_labels.at[i, 'multitask_indices'] = multitask_indices_for_row
+            num_parents.append(multitask_indices_for_row.shape[0])
 
             if multitask_indices_for_row.shape[0] == 1: ## indiv class
                 parent_label_num_multi = row['label_num_multi']
@@ -169,6 +209,11 @@ class MetaChexDataset():
 #         print(indiv_parent_multitask_to_multiclass.keys())
 #         print(f"Count: {len(indiv_parent_multitask_to_multiclass.keys())}")
 
+        self.num_parents_list = num_parents
+    
+        ## Dump to pickle
+        with open(self.num_parents_list_path, 'wb') as file:
+            pickle.dump(self.num_parents_list, file, protocol=pickle.HIGHEST_PROTOCOL)
         
         ## Get the parent multiclass labels if the indiv class exists
         child_to_parent_map = {}
@@ -182,10 +227,16 @@ class MetaChexDataset():
                         parents.append(parent_label_num_multi)
             
             child_multiclass_ind = row['label_num_multi']
-            if child_multiclass_ind not in child_to_parent_map and parents != []:
-                child_to_parent_map[child_multiclass_ind] = parents
+            if (child_multiclass_ind, row['label_str']) not in child_to_parent_map and parents != []:
+                child_to_parent_map[(child_multiclass_ind, row['label_str'])] = parents
 
         self.child_to_parent_map = child_to_parent_map
+        
+        ## Dump to pickle
+        with open(self.child_to_parent_map_path, 'wb') as file:
+            pickle.dump(self.child_to_parent_map, file, protocol=pickle.HIGHEST_PROTOCOL)
+
+#         print(self.child_to_parent_map)
         
         
     def get_data_stats(self, df):
@@ -261,10 +312,7 @@ class MetaChexDataset():
             if len(df_subsplit) > 0:
                 print(i)
             
-            if 0 < len(df_subsplit) < 5: ## make them all test
-                test_idx = 0
-            else:
-                test_idx = int(len(df_subsplit) * split[0])
+            test_idx = int(len(df_subsplit) * split[0])
             df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(test_idx))
             df_other_splits[1] = df_other_splits[1].append(df_subsplit[test_idx:])
         
@@ -290,10 +338,12 @@ class MetaChexDataset():
                 steps = int(len(df_combined) / self.batch_size * factor)
                 self.train_steps_per_epoch = steps
             else:
+                steps = None
                 shuffle_on_epoch_end = False
                 
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
-            ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end)
+            ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
+                               num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size)
             full_datasets.append(ds)
         
         return full_datasets
@@ -337,9 +387,9 @@ class MetaChexDataset():
         df_other_train_val_same = df_other_splits[1].loc[df_other_splits[1]['image_path'].isin(df_other_splits[0]['image_path'])].copy()
         df_other_train_test_same = df_other_splits[2].loc[df_other_splits[2]['image_path'].isin(df_other_splits[0]['image_path'])].copy()
         df_other_val_test_same = df_other_splits[2].loc[df_other_splits[2]['image_path'].isin(df_other_splits[1]['image_path'])].copy()
-        print('train/val overlap: ', len(df_other_train_val_same))
-        print('train/test overlap; ', len(df_other_train_test_same))
-        print('val/test overlap; ', len(df_other_val_test_same))
+#         print('train/val overlap: ', len(df_other_train_val_same))
+#         print('train/test overlap; ', len(df_other_train_test_same))
+#         print('val/test overlap; ', len(df_other_val_test_same))
         
         ## remove train/test and val/test overlaps on train and val sets (keep in the test set -- ensures all labels tested on)
         df_other_splits[0] = df_other_splits[0].loc[~df_other_splits[0]['image_path'].isin(df_other_train_test_same['image_path'])]
@@ -357,7 +407,6 @@ class MetaChexDataset():
         for i, ds_type in enumerate(['train', 'val', 'test']):
             df_combined = nih_dataframes[i].append(df_other_splits[i])
             
-            
             if ds_type == 'train':
                 shuffle_on_epoch_end = shuffle_train
                 factor = 0.1
@@ -373,7 +422,9 @@ class MetaChexDataset():
                 self.val_steps_per_epoch = steps
                 
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
-            ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end)
+            
+            ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
+                               batch_size=self.batch_size, num_classes=self.num_classes_multitask)
             full_datasets.append(ds)
         
         return full_datasets
@@ -489,7 +540,8 @@ class MetaChexDataset():
             if combo:
                 ## Get combo label (for multiclass classification)
                 df['label_num_multi'] = df.groupby(['label_str']).ngroup()
-
+                
+          
             ## Get binary multi-task labels
             unique_labels = list(self.unique_labels_dict.keys())
             unique_labels.remove('No Finding')
@@ -520,7 +572,11 @@ class MetaChexDataset():
         
         self.num_classes_multitask = len(self.unique_labels) - 1 ## remove no finding
         self.num_classes_multiclass = max(df['label_num_multi'].values) + 1
-
+        
+        if self.multiclass:
+            label_df = df[['label_num_multi', 'label_str']].drop_duplicates().sort_values('label_num_multi')
+            self.unique_labels = label_df['label_str'].values
+            
         return df
     
     
