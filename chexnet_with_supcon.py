@@ -1,20 +1,25 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import pickle
-import os
-
 import tensorflow as tf
-import tensorflow_addons as tfa
 from tensorflow.python.ops.numpy_ops import np_config
 np_config.enable_numpy_behavior()
 
-# metachex materials
 from metachex.configs.config import *
-from metachex.dataloader import MetaChexDataset
 from metachex.loss import Losses
+from metachex.dataloader import MetaChexDataset
 from metachex.utils import *
 
-def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
+
+
+def compile():
+    loss_fn = Losses()
+
+    chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+                    loss=loss_fn.supcon_label_loss(),
+                    metrics=[mean_auroc], 
+                    run_eagerly=True)
+                  
+
+def train(num_epochs=15, checkpoint_path="training_progress_supcon/cp_best.ckpt"):
     checkpoint_dir = os.path.dirname(checkpoint_path)
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
@@ -30,33 +35,15 @@ def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
                 steps_per_epoch=dataset.train_steps_per_epoch, ## size(train_ds) * 0.125 * 0.1
                 validation_steps=dataset.val_steps_per_epoch, ## size(val_ds) * 0.125 * 0.2
                 batch_size=dataset.batch_size, ## 8
-                # class_weight=class_weights,
                 callbacks=[cp_callback]
                 )
 
     with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
             pickle.dump(hist.history, file_pi)
 
-    return hist
-
-
-def compile():
-    class_weights, indiv_class_weights, _ = dataset.get_class_weights(one_cap=True)
-
-    loss_fn = Losses(class_weights, batch_size=dataset.batch_size)
-
-    # output_dim = len(unique_labels)
-    chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-                    loss=loss_fn.weighted_binary_crossentropy(),
-    #                   loss_weights=1e5,
-    #                 loss='binary_crossentropy',
-                    #metrics=[tf.keras.metrics.AUC(multi_label=True),  
-                    metrics=[mean_auroc, #mean_precision, mean_recall, 'binary_accuracy', 'accuracy', 
-                            tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask)], 
-                    #        tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
-                    run_eagerly=True)
-
-
+    return hist        
+        
+        
 if __name__ == '__main__':
     args = parse_args()
     # os.environ["CUDA_VISIBLE_DEVICES"]=""
@@ -65,26 +52,25 @@ if __name__ == '__main__':
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     # Instantiate dataset
-    dataset = MetaChexDataset()
-    
-    # Grab training dataset
-    train_ds = dataset.train_ds
+    dataset = MetaChexDataset(multiclass=True)
 
     # Load CheXNet
-    chexnet = load_chexnet(dataset.num_classes_multitask)
+    chexnet = load_chexnet(1) ## any number will do, since we get rid of final dense layer
+    chexnet = get_embedding_model(chexnet)
     chexnet.trainable = True
     
     print(chexnet.summary())
     
     # Compile
     compile()
-
+    
+    checkpoint_path="training_progress_supcon/cp_best.ckpt"
     # Get weights
     if args.pretrained is None:
         print("[INFO] Beginning Fine Tuning")
         # Train
-        hist = train(args.num_epochs, args.ckpt_save_path)
-        record_dir = os.path.dirname(args.ckpt_save_path)
+        hist = train(args.num_epochs)
+        record_dir = os.path.dirname(checkpoint_path)
     else:
         print("[INFO] Loading weights")
         # Load weights
@@ -105,7 +91,7 @@ if __name__ == '__main__':
         chexnet_embedder = get_embedding_model(chexnet)
         tsne_dataset = MetaChexDataset(shuffle_train=False)
 
-        embedding_save_path = os.path.join(record_dir, 'embeddings.npy')
+        embedding_save_path = os.path.join(record_dir, 'embeddings_supcon.npy')
         # generating embeddings can take some time. Load if possible
         if os.path.isfile(embedding_save_path):
             print(f"[INFO] Embeddings already processed. Loading from {embedding_save_path}")
@@ -119,3 +105,9 @@ if __name__ == '__main__':
         tsne_labels = tsne_dataset.train_ds.get_y_true()
 
         plot_tsne(tsne_feats, tsne_labels, lables_names=tsne_dataset.unique_labels)
+
+    
+    
+                  
+                  
+

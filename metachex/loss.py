@@ -7,7 +7,7 @@ from supcon.losses import contrastive_loss
 
 class Losses():
     
-    def __init__(self, class_weights, label_map=None, batch_size=8):
+    def __init__(self, class_weights=None, label_map=None, batch_size=8):
         """
         label_map: mapping of multiclass labels to a list of their parents
         """
@@ -39,15 +39,20 @@ class Losses():
         return weighted_loss
     
     
-    def supcon_label_loss(self, labels, features):
+    def supcon_label_loss(self):
         """
-        features (ie the z's): [batch_size, num_views, embedding_dim] where num_views = 1 (since we do not augment our anchors)
+        features (ie the z's): [batch_size, embedding_dim]
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
         """
-        return tf.reduce_mean(contrastive_loss(features, labels))
+        
+        def supcon_label_loss_inner(labels, features):
+            features = tf.expand_dims(features, axis=1)
+            return contrastive_loss(features, labels)
+        
+        return supcon_label_loss_inner
 
 
-    def supcon_class_loss(self, features, labels):
+    def supcon_class_loss(self, labels, features):
         """
         features (ie the z's): [batch_size, num_views, embedding_dim] where num_views = 1 (since we do not augment our anchors)
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded (multiclass)
