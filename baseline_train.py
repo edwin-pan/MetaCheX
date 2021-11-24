@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import argparse
 import pickle
 import os
-from sklearn.metrics import roc_auc_score, precision_score, recall_score, average_precision
+from sklearn.metrics import roc_auc_score, precision_score, recall_score, average_precision_score
 
 import tensorflow as tf
 import tensorflow_addons as tfa
