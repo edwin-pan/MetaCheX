@@ -60,13 +60,11 @@ class Losses():
         """
         
         def supcon_class_loss_inner(labels, features):
-            features = tf.expand_dims(features, axis=1)
             return class_contrastive_loss(self, features, labels)
         
         return supcon_class_loss_inner
 
     
     def class_contrastive_loss(self, features, labels):
-            ## TODO
-            # TODO: Mapping from childen classes to their parent classes
-            # TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is
+        ## TODO
+        # TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is
