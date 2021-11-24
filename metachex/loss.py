@@ -7,15 +7,16 @@ from supcon.losses import contrastive_loss
 
 class Losses():
     
-    def __init__(self, class_weights=None, label_map=None, batch_size=8):
+    def __init__(self, class_weights=None, child_to_parent_map=None, batch_size=8):
         """
-        label_map: mapping of multiclass labels to a list of their parents
+        child_to_parent_map: mapping of multiclass labels to a list of their parents
+                format: {(child multiclass label (int), child label_str) : list[parent multiclass labels (int)]}
         """
         
         self.class_weights = class_weights
         self.batch_size = batch_size
         
-        self.label_map = label_map
+        self.child_to_parent_map = child_to_parent_map
         
     def weighted_binary_crossentropy(self):
         """class_weights: array of size (27, )"""
