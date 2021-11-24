@@ -8,9 +8,7 @@ from supcon.losses import contrastive_loss
 
 class Losses():
     
-<<<<<<< Updated upstream
     def __init__(self, class_weights=None, label_map=None, train_stage=None, emb_path="training_progress/parent_emb.pkl", batch_size=8):
->>>>>>> Stashed changes
         """
         child_to_parent_map: mapping of multiclass labels to a list of their parents
                 format: {(child multiclass label (int), child label_str) : list[parent multiclass labels (int)]}
@@ -69,11 +67,8 @@ class Losses():
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded (multiclass)
         """
         
-<<<<<<< Updated upstream
         def supcon_class_loss_inner(labels, features):
             return class_contrastive_loss(self, features, labels)
-
->>>>>>> Stashed changes
         
         return supcon_class_loss_inner
 
