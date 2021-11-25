@@ -8,6 +8,16 @@ from metachex.loss import Losses
 from metachex.dataloader import MetaChexDataset, ImageSequence
 from metachex.utils import *
 from sklearn.metrics.pairwise import euclidean_distances
+import argparse
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
+    parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
+    parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
+    parser.add_argument('-c', '--ckpt_save_path', default='training_progress/cp_best.ckpt')
+    parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
+    parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
+    return parser.parse_args()
 
 class NearestNeighbour():
     

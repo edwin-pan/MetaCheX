@@ -2,6 +2,8 @@ import tensorflow as tf
 import numpy as np
 import sys
 import pickle
+import os
+from metachex.configs.config import *
 
 sys.path.append('../') # importing in unit tests
 from supcon.losses import contrastive_loss
