@@ -14,14 +14,6 @@ from metachex.configs.config import *
 
 colormap =  lambda x, N: np.array(matplotlib.cm.get_cmap('viridis')(x/N))
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
-    parser.add_argument('-c', '--ckpt_save_path', default='training_progress/cp_best.ckpt')
-    parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
-    parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
-    parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
-    parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
-    return parser.parse_args()
 
 def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_weights.h5', 
                             input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3)):

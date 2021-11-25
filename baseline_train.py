@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import os
+import argparse
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -13,6 +14,16 @@ from metachex.configs.config import *
 from metachex.dataloader import MetaChexDataset
 from metachex.loss import Losses
 from metachex.utils import *
+
+def parse_args():
+    parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
+    parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
+    parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
+    parser.add_argument('-c', '--ckpt_save_path', default='training_progress/cp_best.ckpt')
+    parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
+    parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
+    return parser.parse_args()
+
 
 def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
     checkpoint_dir = os.path.dirname(checkpoint_path)
