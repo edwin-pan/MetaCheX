@@ -54,6 +54,23 @@ def get_embedding_model(model):
     chexnet_embedder = tf.keras.models.Model(inputs = model.input, outputs = x)
     return chexnet_embedder
 
+def mean_auroc_baseline(y_true, y_pred):
+    ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
+    aurocs = []
+    with open("test_log.txt", "w") as f:
+        for i in range(y_true.shape[1]):
+            try:
+                score = roc_auc_score(y_true[:, i], y_pred[:, i])
+                aurocs.append(score)
+            except ValueError:
+                score = 0
+        mean_auroc = np.mean(aurocs)
+        if eval:
+            f.write("-----------------------\n")
+            f.write(f"mean auroc: {mean_auroc}\n")
+
+    return mean_auroc
+
 def mean_auroc(y_true, y_pred, dataset, eval=False):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
     aurocs = []

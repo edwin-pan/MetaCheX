@@ -61,7 +61,7 @@ def compile():
     #                   loss_weights=1e5,
     #                 loss='binary_crossentropy',
                     #metrics=[tf.keras.metrics.AUC(multi_label=True),  
-                    metrics=[mean_auroc, #mean_precision, mean_recall, 'binary_accuracy', 'accuracy', 
+                    metrics=[mean_auroc_baseline, #mean_precision, mean_recall, 'binary_accuracy', 'accuracy', 
                             tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask)], 
                     #        tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
                     run_eagerly=True)
