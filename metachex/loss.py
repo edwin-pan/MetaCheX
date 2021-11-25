@@ -14,6 +14,7 @@ class Losses():
                 format: {(child multiclass label (int), child label_str) : list[parent multiclass labels (int)]}
         """
         self.embedding_map = None
+        self.parents_indices = dict(zip(list(range(0,27)), [None]*27)) # indices corresponding to parents
         if train_stage == 1: # Save parent embeddings [Need to save with callback]
             self.embedding_map = dict(zip(list(range(0,27)), [None]*27))
             
@@ -75,12 +76,30 @@ class Losses():
     
     def class_contrastive_loss(self, features, labels):
         
-        # Assuming self.label_map contains one-hot encoded labels: parents mapping
+        losses, class_labels = [], []
+        weight = 0.5
         
-        # return tensor of tensors -> [[list of parents]]
-       
-        
-        # for parents in batch, find mean of parent embeddings corresponding to each label 
+        if self.train_stage == 2:
+            # For each example in labels, find index where example[index] == 1
+            for i in range(0, labels.shape[0]): 
+                class_labels.append(np.where(labels[i]==1)) # no vectorization since we care about individual label vectors
+                
+            class_labels = np.array(class_labels)
+            for i, label in enumerate(0, class_labels):
+                if label in self.parents_indices: # if parent label, update embedding dict with mean in batch
+                    self.embedding_map[label] = weight*self.embedding_map[label] + \
+                        (1-weight)*tf.reduce_mean(features[np.where(class_labels=label)], axis=-1)
+                    losses.append(np.zeros(labels[0].shape))
+                    
+                else: # if child, compute loss with average parent embedding
+                    parent_mask = np.in1d(class_labels, self.label_map[label]) # marks True where class_labels has parent_label
+                    avg_parent_emb = tf.reduce_mean(features[np.where(parent_mask==True)]) 
+                    losses.append(tf.math.square(avg_parent_emb - features[i])) # squared loss
+            
+            losses = tf.convert_to_tensor(losses)
+            return losses 
+        else:
+            return tf.zeros(features.shape)
         
         
         # for children in batch, find parent embeddings and compute average embedding + loss v
