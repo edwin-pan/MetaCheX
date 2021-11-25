@@ -14,7 +14,9 @@ class Losses():
                 format: {(child multiclass label (int), child label_str) : list[parent multiclass labels (int)]}
         """
         self.embedding_map = None
-        self.parents_indices = dict(zip(list(range(0,27)), [None]*27)) # indices corresponding to parents
+        
+       
+        self.child_indices = label_map.keys()
         if train_stage == 1: # Save parent embeddings [Need to save with callback]
             self.embedding_map = dict(zip(list(range(0,27)), [None]*27))
             
@@ -86,7 +88,7 @@ class Losses():
                 
             class_labels = np.array(class_labels)
             for i, label in enumerate(0, class_labels):
-                if label in self.parents_indices: # if parent label, update embedding dict with mean in batch
+                if label not in self.child_indices: # if parent label, update embedding dict with mean in batch
                     self.embedding_map[label] = weight*self.embedding_map[label] + \
                         (1-weight)*tf.reduce_mean(features[np.where(class_labels=label)], axis=-1)
                     losses.append(np.zeros(labels[0].shape))

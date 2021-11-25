@@ -7,7 +7,9 @@ import warnings
 warnings.filterwarnings("error")
 
 from glob import glob
-from metachex.configs.config import *
+
+#from metachex.configs.config import *
+from configs.config import *
 
 from tensorflow.keras.utils import Sequence
 from PIL import Image
@@ -236,7 +238,7 @@ class MetaChexDataset():
         with open(self.child_to_parent_map_path, 'wb') as file:
             pickle.dump(self.child_to_parent_map, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-#         print(self.child_to_parent_map)
+        print(self.child_to_parent_map)
         
         
     def get_data_stats(self, df):
