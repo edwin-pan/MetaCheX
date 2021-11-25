@@ -1,18 +1,29 @@
 import tensorflow as tf
 import numpy as np
 import sys
+import pickle
 
 sys.path.append('../') # importing in unit tests
 from supcon.losses import contrastive_loss
 
 class Losses():
     
-    def __init__(self, class_weights=None, child_to_parent_map=None, batch_size=8):
+    def __init__(self, class_weights=None, label_map=None, train_stage=None, emb_path="training_progress/parent_emb.pkl", batch_size=8):
         """
         child_to_parent_map: mapping of multiclass labels to a list of their parents
                 format: {(child multiclass label (int), child label_str) : list[parent multiclass labels (int)]}
         """
+        self.embedding_map = None
         
+       
+        self.child_indices = label_map.keys()
+        if train_stage == 1: # Save parent embeddings [Need to save with callback]
+            self.embedding_map = dict(zip(list(range(0,27)), [None]*27))
+            
+        elif train_stage == 2: # Load & update embedding_map 
+            with open(emb_path, 'rb') as handle:
+                self.embedding_map = pickle.load(handle)
+            
         self.class_weights = class_weights
         self.batch_size = batch_size
         
@@ -66,6 +77,34 @@ class Losses():
 
     
     def class_contrastive_loss(self, features, labels):
+        
+        losses, class_labels = [], []
+        weight = 0.5
+        
+        if self.train_stage == 2:
+            # For each example in labels, find index where example[index] == 1
+            for i in range(0, labels.shape[0]): 
+                class_labels.append(np.where(labels[i]==1)) # no vectorization since we care about individual label vectors
+                
+            class_labels = np.array(class_labels)
+            for i, label in enumerate(0, class_labels):
+                if label not in self.child_indices: # if parent label, update embedding dict with mean in batch
+                    self.embedding_map[label] = weight*self.embedding_map[label] + \
+                        (1-weight)*tf.reduce_mean(features[np.where(class_labels=label)], axis=-1)
+                    losses.append(np.zeros(labels[0].shape))
+                    
+                else: # if child, compute loss with average parent embedding
+                    parent_mask = np.in1d(class_labels, self.label_map[label]) # marks True where class_labels has parent_label
+                    avg_parent_emb = tf.reduce_mean(features[np.where(parent_mask==True)]) 
+                    losses.append(tf.math.square(avg_parent_emb - features[i])) # squared loss
+            
+            losses = tf.convert_to_tensor(losses)
+            return losses 
+        else:
+            return tf.zeros(features.shape)
+        
+        
+        # for children in batch, find parent embeddings and compute average embedding + loss v
         ## TODO
         # TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is
         pass

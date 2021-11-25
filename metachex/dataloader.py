@@ -8,7 +8,9 @@ import pickle
 warnings.filterwarnings("error")
 
 from glob import glob
-from metachex.configs.config import *
+
+#from metachex.configs.config import *
+from configs.config import *
 
 from tensorflow.keras.utils import Sequence
 from PIL import Image
