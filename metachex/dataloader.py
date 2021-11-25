@@ -246,7 +246,7 @@ class MetaChexDataset():
             df_labels.at[i, 'multitask_indices'] = multitask_indices_for_row
             num_parents.append(multitask_indices_for_row.shape[0])
 
-            ## This chunk is not necessary (gets multitask to multiclass mapping for parents that exist individually)
+            ## Gets multitask to multiclass mapping for parents that exist individually
             if multitask_indices_for_row.shape[0] == 1: # indiv class
                 parent_label_num_multi = row['label_num_multi']
                 if self.parent_multiclass_labels[multitask_indices_for_row[0]] == -1:
@@ -256,7 +256,8 @@ class MetaChexDataset():
         ## Populate the rest of the self.parent_multiclass_labels (parents that only exist as combos)
         ## I realized that this is not necessary, but just in case we somehow need it
         indiv_parent_indices = np.where(self.parent_multiclass_labels == -1)[0]
-        self.parent_multiclass_labels[indiv_parent_indices] = np.arange(indiv_parent_indices.shape[0]) + self.num_classes_multiclass
+        self.parent_multiclass_labels[indiv_parent_indices] = np.arange(indiv_parent_indices.shape[0]) \
+                                                                + self.num_classes_multiclass
         
         print(self.parent_multiclass_labels)
 
