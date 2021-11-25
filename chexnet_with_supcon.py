@@ -85,7 +85,8 @@ def get_sampled_df(train_df, max_per_class=20):
     
 
 def compile():
-    loss_fn = Losses()
+    loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, num_indiv_parents=dataset.num_classes_multitask,
+                    embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size)
 
     chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
                     loss=loss_fn.supcon_label_loss(),

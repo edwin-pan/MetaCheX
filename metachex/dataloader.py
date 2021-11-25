@@ -9,8 +9,8 @@ warnings.filterwarnings("error")
 
 from glob import glob
 
-#from metachex.configs.config import *
-from configs.config import *
+from metachex.configs.config import *
+# from configs.config import *
 
 from tensorflow.keras.utils import Sequence
 from PIL import Image
@@ -95,7 +95,7 @@ class ImageSequence(Sequence):
         df = self.df.sample(frac=1., random_state=self.random_state)
         self.x_path = df['image_path']
         if self.multiclass:
-            self.y = np.eye(self.num_classes)[df['label_num_multi'].values.astype(int)]
+            self.y = np.eye(int(self.num_classes))[df['label_num_multi'].values.astype(int)]
         else:
             self.y = np.array(df['label_multitask'].to_list())
         print("self.y.shape: ", self.y.shape)
@@ -115,8 +115,9 @@ class MetaChexDataset():
         self.data_path = os.path.join(PATH_TO_DATA_FOLDER, 'data.pkl')
         
         ## Child to parent map and num_parents_list path
-        self.child_to_parent_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'childParent_indices.pkl')
+        self.child_to_parent_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'childParent.pkl')
         self.num_parents_list_path = os.path.join(PATH_TO_DATA_FOLDER, 'num_parents_list.pkl')
+        self.parent_multiclass_labels_path = os.path.join(PATH_TO_DATA_FOLDER, 'parent_multiclass_labels.npy')
         
         # Pre-processing
         print("[INFO] pre-processing")
@@ -134,8 +135,11 @@ class MetaChexDataset():
         
         if multiclass:
             print("[INFO] get child-to-parents mapping")
+            ## list of multiclass labels corresponding to multitask index
+            self.parent_multiclass_labels = np.ones((self.num_classes_multitask,)) * -1 
             self.get_child_to_parent_mapping()
             self.get_num_parents_to_count_df()
+            self.num_classes_multiclass_plus = np.max(self.parent_multiclass_labels)
 
         print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
@@ -167,17 +171,20 @@ class MetaChexDataset():
     
     def get_child_to_parent_mapping(self):
         """
-        Get dict of child index to list of parent indices for all classes (combo and indiv)
+        Get dict of child index to list of parent indices for all child classes
+        
+        returns: {multiclass_child_ind (0 to 328) : list of multitask parent indices (0 to 26)}
         """
         
         if os.path.isfile(self.child_to_parent_map_path): ## load from pickle
             with open(self.child_to_parent_map_path, 'rb') as file:
                 self.child_to_parent_map = pickle.load(file)
             
-            ## Dump to pickle
-            with open(self.num_parents_list_path, 'wb') as file:
+            ## Load from pickle
+            with open(self.num_parents_list_path, 'rb') as file:
                 self.num_parents_list = pickle.load(file)
             
+            self.parent_multiclass_labels = np.load(self.parent_multiclass_labels_path)
             return
         
         ## Roundabout way to get a copy of df_condensed (since col 'multitask_indices' has lists)
@@ -190,8 +197,6 @@ class MetaChexDataset():
 
         df_labels['multitask_indices'] = 0
         df_labels['multitask_indices'] = df_labels['multitask_indices'].astype(object)
-
-        indiv_parent_multitask_to_multiclass = {} ## multitask index to multiclass label dict
         
         num_parents = [] ## list of number of parents for each row
         
@@ -202,15 +207,19 @@ class MetaChexDataset():
             df_labels.at[i, 'multitask_indices'] = multitask_indices_for_row
             num_parents.append(multitask_indices_for_row.shape[0])
 
-            if multitask_indices_for_row.shape[0] == 1: ## indiv class
+            ## This chunk is not necessary (gets multitask to multiclass mapping for parents that exist individually)
+            if multitask_indices_for_row.shape[0] == 1: # indiv class
                 parent_label_num_multi = row['label_num_multi']
-                if multitask_indices_for_row[0] not in indiv_parent_multitask_to_multiclass:
-#                     print(row['label_str'])
-                    indiv_parent_multitask_to_multiclass[multitask_indices_for_row[0]] = parent_label_num_multi
-
-#         print("Individual classes with examples: ")
-#         print(indiv_parent_multitask_to_multiclass.keys())
-#         print(f"Count: {len(indiv_parent_multitask_to_multiclass.keys())}")
+                if self.parent_multiclass_labels[multitask_indices_for_row[0]] == -1:
+                    self.parent_multiclass_labels[multitask_indices_for_row[0]] = parent_label_num_multi
+        
+        
+        ## Populate the rest of the self.parent_multiclass_labels (parents that only exist as combos)
+        ## I realized that this is not necessary, but just in case we somehow need it
+        indiv_parent_indices = np.where(self.parent_multiclass_labels == -1)[0]
+        self.parent_multiclass_labels[indiv_parent_indices] = np.arange(indiv_parent_indices.shape[0]) + self.num_classes_multiclass
+        
+        print(self.parent_multiclass_labels)
 
         self.num_parents_list = num_parents
     
@@ -218,19 +227,23 @@ class MetaChexDataset():
         with open(self.num_parents_list_path, 'wb') as file:
             pickle.dump(self.num_parents_list, file, protocol=pickle.HIGHEST_PROTOCOL)
         
+        np.save(self.parent_multiclass_labels_path, self.parent_multiclass_labels)
+        
         ## Get the parent multiclass labels if the indiv class exists
         child_to_parent_map = {}
 
         for i, row in df_labels.iterrows():
-            parents = []
+            parents = np.array([])
             if row['multitask_indices'].shape[0] > 1: ## combo
-                for ind in row['multitask_indices']:
-                    if ind in indiv_parent_multitask_to_multiclass:
-                        parent_label_num_multi = indiv_parent_multitask_to_multiclass[ind]
-                        parents.append(parent_label_num_multi)
+                parents = row['multitask_indices']
+                
+#                 for ind in row['multitask_indices']:
+#                     if ind in indiv_parent_multitask_to_multiclass:
+#                         parent_label_num_multi = indiv_parent_multitask_to_multiclass[ind]
+#                         parents.append(parent_label_num_multi)
             
             child_multiclass_ind = row['label_num_multi']
-            if child_multiclass_ind not in child_to_parent_map and parents != []:
+            if child_multiclass_ind not in child_to_parent_map and parents.shape[0] > 0:
                 child_to_parent_map[child_multiclass_ind] = parents
 
         self.child_to_parent_map = child_to_parent_map
@@ -346,7 +359,7 @@ class MetaChexDataset():
                 
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
             ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
-                               num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size)
+                               num_classes=self.num_classes_multiclass_plus, multiclass=True, batch_size=self.batch_size)
             full_datasets.append(ds)
         
         return full_datasets
