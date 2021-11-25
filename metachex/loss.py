@@ -83,37 +83,40 @@ class Losses():
         return supcon_class_loss_inner
 
     
-    def class_contrastive_loss(self, features, labels):
+    def class_contrastive_loss(self):
         
-        losses, class_labels = [], []
-        weight = 0.5
+        def class_contrastive_loss_inner(labels):
         
-        if self.train_stage == 2:
-            # For each example in labels, find index where example[index] == 1
-            class_labels = np.where(labels == 1)[1]
-#             for i in range(0, labels.shape[0]): 
-#                 class_labels.append(np.where(labels[i]==1)) # no vectorization since we care about individual label vectors
-                
-#             class_labels = np.array(class_labels)
-            for i, label in enumerate(0, class_labels):
-                if label not in self.child_indices: # parent label that exists individually 
-                    ## update embedding dict with mean in batch
-                    self.embedding_matrix[label] = weight*self.embedding_matrix[label] + \
-                        (1-weight)*tf.reduce_mean(features[np.where(class_labels=label)], axis=0)
-                    losses.append(np.zeros(labels[0].shape))
-                    
-                else: # if child, compute loss with average parent embedding
-                    ## TODO average the parent embeddings in self.embedding_matrix
-                    # marks True where class_labels has parent_label
-                    parent_mask = np.in1d(class_labels, self.child_to_parent_map[label]) 
-                    avg_parent_emb = tf.reduce_mean(features[np.where(parent_mask==True)], axis=0) 
-                    losses.append(tf.math.square(avg_parent_emb - features[i])) # squared loss
-            
-            losses = tf.convert_to_tensor(losses)
-            return losses 
-        else:
-            return tf.zeros(features.shape)
+            losses, class_labels = [], []
+            weight = 0.5
+
+            if self.train_stage == 2:
+                # For each example in labels, find index where example[index] == 1
+                class_labels = np.where(labels == 1)[1]
+    #             for i in range(0, labels.shape[0]): 
+    #                 class_labels.append(np.where(labels[i]==1)) # no vectorization since we care about individual label vectors
+
+    #             class_labels = np.array(class_labels)
+                for i, label in enumerate(0, class_labels):
+                    if label not in self.child_indices: # parent label that exists individually 
+                        ## update embedding dict with mean in batch
+                        self.embedding_matrix[label] = weight*self.embedding_matrix[label] + \
+                            (1-weight)*tf.reduce_mean(features[np.where(class_labels=label)], axis=0)
+                        losses.append(np.zeros(labels[0].shape))
+
+                    else: # if child, compute loss with average parent embedding
+                        ## TODO average the parent embeddings in self.embedding_matrix
+                        # marks True where class_labels has parent_label
+                        parent_mask = np.in1d(class_labels, self.child_to_parent_map[label]) 
+                        avg_parent_emb = tf.reduce_mean(features[np.where(parent_mask==True)], axis=0) 
+                        losses.append(tf.math.square(avg_parent_emb - features[i])) # squared loss
+
+                losses = tf.convert_to_tensor(losses)
+                return losses 
+            else:
+                return tf.zeros(features.shape)
         
+        return class_contrastive_loss_inner
         
         # for children in batch, find parent embeddings and compute average embedding + loss v
         ## TODO
