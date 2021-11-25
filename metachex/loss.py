@@ -53,7 +53,7 @@ class Losses():
         return supcon_label_loss_inner
 
 
-    def supcon_class_loss(self)
+    def supcon_class_loss(self):
         """
         features (ie the z's): [batch_size, embedding_dim]
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded (multiclass)
@@ -68,3 +68,4 @@ class Losses():
     def class_contrastive_loss(self, features, labels):
         ## TODO
         # TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is
+        pass

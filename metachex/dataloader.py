@@ -4,6 +4,7 @@ import numpy as np
 import os
 import sys
 import warnings
+import pickle
 warnings.filterwarnings("error")
 
 from glob import glob
@@ -112,8 +113,8 @@ class MetaChexDataset():
         self.data_path = os.path.join(PATH_TO_DATA_FOLDER, 'data.pkl')
         
         ## Child to parent map and num_parents_list path
-        self.child_to_parent_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'childParent.pkl')
-        self.num_parents_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'num_parents_list.pkl')
+        self.child_to_parent_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'childParent_indices.pkl')
+        self.num_parents_list_path = os.path.join(PATH_TO_DATA_FOLDER, 'num_parents_list.pkl')
         
         # Pre-processing
         print("[INFO] pre-processing")
@@ -227,8 +228,8 @@ class MetaChexDataset():
                         parents.append(parent_label_num_multi)
             
             child_multiclass_ind = row['label_num_multi']
-            if (child_multiclass_ind, row['label_str']) not in child_to_parent_map and parents != []:
-                child_to_parent_map[(child_multiclass_ind, row['label_str'])] = parents
+            if child_multiclass_ind not in child_to_parent_map and parents != []:
+                child_to_parent_map[child_multiclass_ind] = parents
 
         self.child_to_parent_map = child_to_parent_map
         
@@ -236,7 +237,7 @@ class MetaChexDataset():
         with open(self.child_to_parent_map_path, 'wb') as file:
             pickle.dump(self.child_to_parent_map, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-#         print(self.child_to_parent_map)
+        print(self.child_to_parent_map)
         
         
     def get_data_stats(self, df):
