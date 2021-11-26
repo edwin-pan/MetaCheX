@@ -71,10 +71,11 @@ def mean_auroc_baseline(y_true, y_pred):
 
     return mean_auroc
 
-def mean_auroc(y_true, y_pred, dataset, eval=False):
+def mean_auroc(y_true, y_pred, dataset, eval=False, dir_path='.'):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
     aurocs = []
-    with open("test_log.txt", "w") as f:
+    test_auroc_log_path = os.path.join(dir_path, "auroc.txt")
+    with open(test_auroc_log_path, "w") as f:
         for i in range(y_true.shape[1]):
             try:
                 score = roc_auc_score(y_true[:, i], y_pred[:, i])
@@ -92,8 +93,8 @@ def mean_auroc(y_true, y_pred, dataset, eval=False):
     return mean_auroc
 
 
-def average_precision(y_true, y_pred, dataset):
-    test_ap_log_path = os.path.join(".", "average_prec.txt")
+def average_precision(y_true, y_pred, dataset, dir_path="."):
+    test_ap_log_path = os.path.join(dir_path, "average_prec.txt")
     with open(test_ap_log_path, "w") as f:
         aps = []
         for i in range(y_true.shape[1]):

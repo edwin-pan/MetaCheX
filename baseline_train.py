@@ -106,9 +106,10 @@ if __name__ == '__main__':
         print("[INFO] Evaluating performance")
         y_test_true = dataset.test_ds.get_y_true() 
         y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
-        print(y_test_true.shape, y_test_pred.shape)
-        mean_auroc(y_test_true, y_test_pred, dataset, eval=True)
-        average_precision(y_test_true, y_test_pred, dataset)
+        
+        dir_path = os.path.dirname(args.ckpt_save_path)
+        mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
+        average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
 
     # Generate tSNE
     if args.tsne:

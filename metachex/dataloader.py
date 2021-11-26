@@ -58,10 +58,13 @@ class ImageSequence(Sequence):
         return self.steps
 
     def __getitem__(self, idx):
-        batch_x_path = self.x_path[idx * self.batch_size:(idx + 1) * self.batch_size]
+        
+        end_idx = min((idx + 1) * self.batch_size, self.x_path.shape[0])
+        
+        batch_x_path = self.x_path[idx * self.batch_size:end_idx]
         batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
         # batch_x = self.transform_batch_images(batch_x)
-        batch_y = self.y[idx * self.batch_size:(idx + 1) * self.batch_size]
+        batch_y = self.y[idx * self.batch_size:end_idx]
         return batch_x, batch_y
 
     def load_image(self, image_path):
@@ -89,6 +92,8 @@ class ImageSequence(Sequence):
             raise ValueError("""
             You're trying run get_y_true() when generator option 'shuffle_on_epoch_end' is True.
             """)
+        
+        end_idx = min(self.steps*self.batch_size, self.y.shape[0])
         return self.y[:self.steps*self.batch_size, :]
 
     def prepare_dataset(self):
@@ -481,6 +486,8 @@ class MetaChexDataset():
                 self.train_steps_per_epoch = steps
             elif ds_type == 'val':
                 self.val_steps_per_epoch = steps
+            else: ## test
+                steps += 1 ## add for extra incomplete batch
                 
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
             
