@@ -468,9 +468,12 @@ class MetaChexDataset():
             if ds_type == 'train':
                 shuffle_on_epoch_end = shuffle_train
                 factor = 0.1
-            else:
+            elif ds_type == 'val':
                 shuffle_on_epoch_end = False
                 factor = 0.2
+            else: ## test
+                shuffle_on_epoch_end = False
+                factor = 1
             
             steps = int(len(df_combined) / self.batch_size * factor)
             

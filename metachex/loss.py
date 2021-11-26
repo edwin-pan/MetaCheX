@@ -31,7 +31,8 @@ class Losses():
         ## each entry corresponds to multiclass label for that multitask index
         self.parent_multiclass_labels = np.load(parent_multiclass_labels_path) ## (27, ) 
         
-        self.child_indices = child_to_parent_map.keys()
+        if child_to_parent_map is not None:
+            self.child_indices = child_to_parent_map.keys()
 #         if train_stage == 1: # Save parent embeddings [Need to save with callback]
 #             self.embedding_map = #dict(zip(list(range(0,27)), [None]*27))
             
