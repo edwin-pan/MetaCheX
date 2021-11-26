@@ -14,7 +14,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
     parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
-    parser.add_argument('-c', '--ckpt_save_path', default='training_progress/cp_best.ckpt')
+    parser.add_argument('-c', '--ckpt_save_path', default='training_progress_supcon/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
     parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
     return parser.parse_args()
@@ -144,7 +144,7 @@ if __name__ == '__main__':
     # Compile
     compile()
     
-    checkpoint_path="training_progress_supcon/cp_best.ckpt"
+    checkpoint_path="training_progress_supcon/cp_supcon_best.ckpt"
     # Get weights
     if args.pretrained is None:
         print("[INFO] Beginning Fine Tuning")
