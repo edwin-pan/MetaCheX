@@ -20,9 +20,92 @@ from skimage.transform import resize
 np.random.seed(271)
 
 
+class ProtoNetImageSequence(ImageSequence):
+    
+    def __init__(self, df, num_classes, num_samples_per_class, 
+                 batch_size=8, target_size=(224, 224), verbose=0, steps=None, shuffle_on_epoch_end=True, 
+                 random_state=271):
+        
+        self.df = df
+        self.num_classes = num_classes
+        self.num_samples_per_class = num_samples_per_class
+        self.batch_size = batch_size
+        self.target_size = target_size
+        self.verbose = verbose
+        self.shuffle = shuffle_on_epoch_end
+        self.random_state = random_state
+        self.prepare_dataset()
+        
+        
+    def __getitem__(self, idx):
+        
+        """
+        batch_x: [num_classes x num_samples_per_class, 224, 224, 3]
+        batch_y: [num_classes x num_samples_per_class, num_classes] (one-hot labels)
+        """
+        
+        batch_x_path = self.path_batches[idx].flatten()
+        batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
+        batch_y = np.eye(self.num_classes)[self.label_batches[idx].flatten()] 
+        
+        return batch_x, batch_y
+    
+    def prepare_dataset(self):
+        """
+        all_path_batches: [batch_size, num_classes, num_samples_per_class]
+        all_label_batches: [batch_size, num_classes, num_samples_per_class]
+        """
+        
+        all_path_batches, all_label_batches = [], []
+        
+        for i in range(self.batch_size):
+            ## sample num_classes from the classes in df
+            all_classes = self.df['label_str'].drop_duplicates().values
+            sampled_classes = np.random.choice(all_classes, self.num_classes)
+            
+            truncated_df = self.df[self.df['label_str'] in sampled_classes]
+            
+            ## for each of the num_classes, sample num_samples_per_class samples per class
+            sampled_df = pd.DataFrame(columns=self.df.columns)
+            
+            path_batch = []
+            label_batch = []
+            for i, classname in enumerate(sampled_classes):
+                df_class = truncated_df[truncated_df['label_str'] == classname]
+                df_class = df_class.sample(n=self.num_samples_per_class, random_state=self.random_state)
+                
+                path_batch.append(df_classes['image_path'].values)
+                label_batch.append([i] * self.num_samples_per_class)
+            
+            
+            path_batch = np.array(path_batch)
+            label_batch = np.array(label_batch).astype(int) ## categorical
+            
+            batch = np.concatenate([path_batch, label_batch], 2)
+            
+            ## shuffle matrix
+            if shuffle:
+                for p in range(self.num_samples_per_class):
+                    np.random.shuffle(batch[:, p])
+                    
+            path_batch = batch[:, :, 0]
+            label_batch = batch[:, :, 1]
+            
+            all_path_batches.append(path_batch)
+            all_label_batches.append(label_batch)
+                
+        self.path_batches = np.stack(all_path_batches)
+        self.label_batches = np.stack(all_label_batches)
+
+    def on_epoch_end(self):
+        if self.shuffle:
+            self.random_state += 1
+            self.prepare_dataset()
+
+            
 class ImageSequence(Sequence):
     """
-    Class was taken from CheXNet implementation
+    Class was adapted from CheXNet implementation
     """
 
     def __init__(self, df, batch_size=8,
@@ -39,7 +122,6 @@ class ImageSequence(Sequence):
         self.df = df
         self.batch_size = batch_size
         self.target_size = target_size
-        self.augmenter = augmenter ## not used
         self.verbose = verbose
         self.shuffle = shuffle_on_epoch_end
         self.random_state = random_state
@@ -63,7 +145,6 @@ class ImageSequence(Sequence):
         
         batch_x_path = self.x_path[idx * self.batch_size:end_idx]
         batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
-        # batch_x = self.transform_batch_images(batch_x)
         batch_y = self.y[idx * self.batch_size:end_idx]
         return batch_x, batch_y
 
@@ -73,15 +154,6 @@ class ImageSequence(Sequence):
         image_array = image_array / 255.
         image_array = resize(image_array, self.target_size)
         return image_array
-
-    def transform_batch_images(self, batch_x):
-        if self.augmenter is not None:
-            batch_x = self.augmenter.augment_images(batch_x)
-        imagenet_mean = np.array([0.485, 0.456, 0.406])
-        imagenet_std = np.array([0.229, 0.224, 0.225])
-        batch_x = (batch_x - imagenet_mean) / imagenet_std
-        batch_x = tf.convert_to_tensor(batch_x)
-        return batch_x
 
     def get_y_true(self):
         """
@@ -112,7 +184,7 @@ class ImageSequence(Sequence):
 
 
 class MetaChexDataset():
-    def __init__(self, shuffle_train=True, multiclass=False, batch_size=8):
+    def __init__(self, shuffle_train=True, multiclass=False, protonet=False, batch_size=8, n=3, k=5, n_test=3, k_test=5):
         self.batch_size = batch_size
         self.multiclass = multiclass
         
@@ -149,15 +221,55 @@ class MetaChexDataset():
         print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
         print("[INFO] shuffle & batch")
-        if multiclass:
+        if protonet:
+            [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits(self.df_condensed, 
+                                                                                            n, k, n_test, k_test,
+                                                                                            shuffle_train=shuffle_train)
+        elif multiclass:
             [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
-            self.get_supcon_stage1_ds()
+            self.stage1_ds = self.get_supcon_stage1_ds()
         else:
-            [self.train_ds, self.val_ds, self.test_ds] = self.get_multitask_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
+            [self.train_ds, self.val_ds, self.test_ds] = self.get_multitask_generator_splits(self.df_condensed, 
+                                                                                             shuffle_train=shuffle_train)
 
         print('[INFO] initialized')
         return
 
+    
+    def get_protonet_generator_splits(self, df, n, k, n_test, k_test, split=(0.8, 0.1, 0.1), shuffle_train=True):
+        """
+        Get datasets for train, val and test (n-way, k-shot)
+        """
+        
+        ## Get labels for train, val, test
+        train_num = int(self.num_classes_multiclass * split[0])
+        val_num = int(self.num_classes_multiclass * split[1])
+        
+        unique_label_strs = df['label_str'].drop_duplicates().values
+        unique_label_strs = np.random.shuffle(unique_label_strs)
+        
+        train_label_strs = unique_label_strs[:train_num]
+        val_label_strs = unique_label_strs[train_num : train_num + val_num]
+        test_label_strs = unique_label_strs[train_num + val_num :]
+        
+        label_strs = [train_label_strs, val_label_strs, test_label_strs]
+        
+        ds_types = ['train', 'val', 'test']
+        
+        dfs = [df[df['label_str'] in lst] for lst in label_strs]
+        
+        datasets = []
+        for i, ds_type in enumerate(ds_types):
+            shuffle_on_epoch_end = False
+            num_classes, num_samples_per_class = n, k
+            if ds_type == 'train':
+                shuffle_on_epoch_end = True
+            elif ds_type == 'test':
+                num_classes, num_samples_per_class = n_test, k_test
+            
+            ds = ProtoNetImageSequence(dfs[i], num_classes=num_classes, num_samples_per_class=num_samples_per_class, 
+                                       batch_size=self.batch_size, shuffle_on_epoch_end=shuffle_on_epoch_end)
+    
     
     def get_supcon_stage1_ds(self):
         """
@@ -193,9 +305,10 @@ class MetaChexDataset():
         stage1_df = indiv_parent_rows.append(children_rows).reset_index(drop=True)
         steps = int(len(stage1_df) / self.batch_size * 0.1)
         
-        self.stage1_ds = ImageSequence(df=stage1_df, steps=steps, shuffle_on_epoch_end=True, 
+        stage1_ds = ImageSequence(df=stage1_df, steps=steps, shuffle_on_epoch_end=True, 
                                num_classes=self.num_classes_multiclass_plus, multiclass=True, batch_size=self.batch_size)
     
+        return stage1_ds
         
     def get_num_parents_to_count_df(self):
         
@@ -675,15 +788,6 @@ class MetaChexDataset():
             indiv_class_weights = {i: {0: indiv_weights.values[i], 1: indiv_weights_false.values[i]}}
         
         return np.array([indiv_weights.values, indiv_weights_false.values]), indiv_class_weights, combo_class_weights
-    
-
-    def get_class_probs(self):
-        """ Compute class probabilities for dataset (both individual and combo labels computed)"""
-        _, _, indiv, combo = self.get_data_stats(self.df_condensed)
-        indiv_class_probs = indiv['count']/indiv['count'].sum()
-        combo_class_probs = combo['count']/combo['count'].sum()
-        
-        return indiv_class_probs, combo_class_probs
     
 
 
