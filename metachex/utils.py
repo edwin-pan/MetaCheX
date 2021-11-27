@@ -105,6 +105,26 @@ def average_precision(y_true, y_pred, dataset, dir_path="."):
         f.write("-------------------------\n")
         f.write(f"mean average precision: {mean_ap}\n")
 
+def generate_metric_plots(filepath): 
+    ''' Generate plots with training and validation metrics. 
+        Input filepath specifies path to pickle file storing hist object from training.
+    '''
+    plt.figure(1, figsize=(5, 5))
+    hist_dict = pickle.load(open(filepath, "rb"))
+    metrics = ['loss', 'mean_auroc', 'f1_score'] # edit this array if you want to see more metrics
+    # Plot train and val metrics 
+    for metric in metrics:
+        val_metric = 'val_' + metric 
+        plt.plot(hist_dict[metric])
+        plt.plot(hist_dict[val_metric])
+        title = 'Model ' + metric 
+        plt.title(title)
+        plt.ylabel(metric)
+        plt.xlabel('Epoch')
+        plt.legend(['Train', 'Val'], loc='upper left')
+        fname = metric + '.png'
+        plt.savefig(fname)
+        plt.clf() 
         
 def process_tSNE(features, learning_rate=10, perplexity=20):
     """ Computes tNSE embedding as array"""
