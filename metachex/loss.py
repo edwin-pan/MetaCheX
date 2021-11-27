@@ -25,7 +25,7 @@ class Losses():
                 format: {child multiclass label (int) : list[parent multitask indices (int)]}
                 e.g: {122: array([2, 6])}
         """
-        
+        self.num_indiv_parents = num_indiv_parents # store depth for creating one-hot labels on fly
         self.embedding_matrix = np.zeros((num_indiv_parents, embed_dim)) ## [27 x 128] -- parent labels are in alphabetical order
         
         ## each entry corresponds to multiclass label for that multitask index
@@ -91,33 +91,35 @@ class Losses():
 
 
     def class_contrastive_loss(self, labels, features):
-
+        """
+        features (ie the z's): [batch_size, embedding_dim]
+        labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
+        Assumes self.embedding_matrix is a 27x128 matrix of embedding vectors, where the ith
+        column vector is the embedding of parent with label i.
+        """
         losses, class_labels = [], []
-        weight = 0.5
-
+        weight = self.childparent_lambda
+        depth = self.num_indiv_parents
         if self.stage_num == 2:
             # For each example in labels, find index where example[index] == 1
             class_labels = np.where(labels == 1)[1]
-    #             for i in range(0, labels.shape[0]): 
-    #                 class_labels.append(np.where(labels[i]==1)) # no vectorization since we care about individual label vectors
-
-    #             class_labels = np.array(class_labels)
             for i, label in enumerate(0, class_labels):
-                if label not in self.child_indices: # parent label that exists individually 
-                    ## update embedding dict with mean in batch
-                    self.embedding_matrix[label] = weight*self.embedding_matrix[label] + \
+                depth = 27 # embeding dimension
+                if label >= 0 and label <= 26: # Parent label
+                    # Update embedding dict with weighted average of existing embedding and mean batch embedding for label
+                    one_hot_label = tf.one_hot(label, depth)
+                    self.embedding_matrix[label] = weight*one_hot_label.dot(self.embedding_matrix) + \
                         (1-weight)*tf.reduce_mean(features[np.where(class_labels=label)], axis=0)
-                    losses.append(np.zeros(labels[0].shape))
+                    losses.append(np.zeros(labels[0].shape)) # No childParent loss for parent
 
-                else: # if child, compute loss with average parent embedding
-                    ## TODO average the parent embeddings in self.embedding_matrix
-                    # marks True where class_labels has parent_label
-                    parent_mask = np.in1d(class_labels, self.child_to_parent_map[label]) 
-                    avg_parent_emb = tf.reduce_mean(features[np.where(parent_mask==True)], axis=0) 
+                else: # If child, compute loss with average parent embedding as stored in self.embedding_matrix
+                    depth = self.embedding_matrix.shape[0] #
+                    one_hot_parents = tf.one_hot(self.child_to_parent_map[label], depth)
+                    avg_parent_emb = tf.reduce_mean(one_hot_parents.dot(self.embedding_matrix))
                     losses.append(tf.math.square(avg_parent_emb - features[i])) # squared loss
 
             losses = tf.convert_to_tensor(losses)
-            return losses 
+            return losses
         else:
             return tf.zeros(features.shape)
 
