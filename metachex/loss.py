@@ -19,7 +19,7 @@ class Losses():
                  emb_path="training_progress/parent_emb.pkl", batch_size=8, 
                  num_indiv_parents=27, embed_dim=128,
                  parent_multiclass_labels_path=os.path.join(PATH_TO_DATA_FOLDER, 'parent_multiclass_labels.npy'),
-                 stage_num=1):
+                 stage_num=1, childparent_lambda=1):
         """
         child_to_parent_map: mapping of multiclass labels to a list of their parents
                 format: {child multiclass label (int) : list[parent multitask indices (int)]}
@@ -44,6 +44,7 @@ class Losses():
         self.batch_size = batch_size
         
         self.child_to_parent_map = child_to_parent_map 
+        self.childparent_lambda = childparent_lambda
         self.stage_num = stage_num
         
     def weighted_binary_crossentropy(self):
@@ -77,7 +78,7 @@ class Losses():
         def supcon_class_loss_inner(labels, features):
             return class_contrastive_loss(self, labels, features)
         
-        return supcon_label_loss_inner + supcon_class_loss_inner
+        return supcon_label_loss_inner + self.childparent_lambda * supcon_class_loss_inner
     
     
     def supcon_label_loss(self):

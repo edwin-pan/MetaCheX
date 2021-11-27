@@ -18,10 +18,11 @@ def parse_args():
     parser.add_argument('-c', '--ckpt_save_path', default='training_progress_supcon_childparent/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
     parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
+    parser.add_argument('-l', '--lambda', type=int, default=1, help='Weight for childParent regularizer')
     return parser.parse_args()
 
 
-def compile_stage(stage_num=1):
+def compile_stage(stage_num=1, childparent_lambda=1):
     if stage_num == 1:
         loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, num_indiv_parents=dataset.num_classes_multitask,
                         embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
@@ -29,7 +30,7 @@ def compile_stage(stage_num=1):
     else:
         loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, num_indiv_parents=dataset.num_classes_multitask,
                         embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
-                        stage_num=2)
+                        stage_num=2, childparent_lambda=childparent_lambda)
 
     chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
                     loss=loss_fn.supcon_full_loss(),
@@ -81,7 +82,7 @@ if __name__ == '__main__':
     print(chexnet_encoder.summary())
           
     # Compile stage 1
-    compile_stage(stage_num=1)
+    compile_stage(stage_num=1, childparent_lambda=args.lambda)
     
     checkpoint_dir="training_progress_supcon_childparent"
     # Get weights
