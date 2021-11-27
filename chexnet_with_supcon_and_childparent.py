@@ -5,11 +5,11 @@ np_config.enable_numpy_behavior()
 
 from metachex.configs.config import *
 from metachex.loss import Losses
-from metachex.dataloader import MetaChexDataset, ImageSequence
+from metachex.dataloader import MetaChexDataset
 from metachex.utils import *
-from sklearn.metrics.pairwise import euclidean_distances
-from chexnet_with_supcon import NearestNeighbour
+from metachex.nearest_neighbour import NearestNeighbour
 import argparse
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
@@ -18,19 +18,20 @@ def parse_args():
     parser.add_argument('-c', '--ckpt_save_path', default='training_progress_supcon_childparent/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
     parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
-    parser.add_argument('-l', '--lambda', type=int, default=1, help='Weight for childParent regularizer')
+    parser.add_argument('-wp', '--parent_weight', type=int, default=0.5, help='Weight for modifying existing parent embedding')
+    parser.add_argument('-wc', '--child_weight', type=int, default=0.2, help='Weight for modifying non-existent parent embeddings')
+    parser.add_argument('-w2', '--stage2_weight', type=int, default=1., help='Weight for childParent regularizer')
     return parser.parse_args()
 
 
-def compile_stage(stage_num=1, childparent_lambda=1):
+def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weight=1.):
     if stage_num == 1:
-        loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, num_indiv_parents=dataset.num_classes_multitask,
-                        embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
+        loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
                         stage_num=1)
     else:
-        loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, num_indiv_parents=dataset.num_classes_multitask,
-                        embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
-                        stage_num=2, childparent_lambda=childparent_lambda)
+        loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, 
+                         embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
+                         stage_num=2, parent_weight=parent_weight, child_weight=child_weight, stage2_weight=stage2_weight)
 
     chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
                     loss=loss_fn.supcon_full_loss(),
@@ -39,12 +40,13 @@ def compile_stage(stage_num=1, childparent_lambda=1):
 
 def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_supcon_childparent"):
     # Create a callback that saves the model's weights
+    ds = dataset.train_ds
     if stage_num == 1:
         checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best.ckpt")
-        ds = dataset.stage1_ds
+#         ds = dataset.stage1_ds
     else:
         checkpoint_path = os.path.join(checkpoint_dir, "stage2_cp_best.ckpt")
-        ds = dataset.train_ds
+#         ds = dataset.train_ds
         
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                         save_weights_only=True,
@@ -52,16 +54,28 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_su
     
     hist = chexnet_encoder.fit(ds,
         epochs=num_epochs,
-        steps_per_epoch=dataset.stage1_steps_per_epoch, 
+        steps_per_epoch=dataset.train_steps_per_epoch, 
         batch_size=dataset.batch_size, 
         callbacks=[cp_callback]
         )
 
-#     with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
-#             pickle.dump(hist.history, file_pi)
+    with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
+            pickle.dump(hist.history, file_pi)
 
     return hist     
         
+     
+def create_parent_embed_matrix(model, dataset, max_num_samples_per_class=20, parent_emb_path="training_progress/parent_emb.npy"):
+    
+    nn = NearestNeighbour(model=model, dataset=dataset, parents_only=True)
+    nn.calculate_prototypes(full=False, max_per_class=max_num_samples_per_class)
+    
+    embed_matrix = nn.prototypes.T ## (embedding_dim, 27)
+    
+    np.save(parent_emb_path, embed_matrix)
+    
+    return embed_matrix
+    
         
 if __name__ == '__main__':
     args = parse_args()
@@ -82,7 +96,7 @@ if __name__ == '__main__':
     print(chexnet_encoder.summary())
           
     # Compile stage 1
-    compile_stage(stage_num=1, childparent_lambda=args.lambda)
+    compile_stage(stage_num=1)
     
     checkpoint_dir="training_progress_supcon_childparent"
     # Get weights
@@ -91,8 +105,12 @@ if __name__ == '__main__':
         # Train stage 1
         stage1_hist = train_stage(num_epochs=args.num_epochs, stage_num=1)
         
+        # Create embedding matrix for parents
+        embed_matrix = create_parent_embed_matrix(model=chexnet_encoder, dataset=dataset, max_num_samples_per_class=2) # change #
+        
         # Compile stage 2
-        compile_stage(stage_num=2)
+        compile_stage(stage_num=2, parent_weight=args.parent_weight, child_weight=args.child_weight,
+                      stage2_weight=args.stage2_weight)
         stage2_hist = train_stage(num_epochs=args.num_epochs, stage_num=2)
         
         record_dir = checkpoint_dir
@@ -103,8 +121,8 @@ if __name__ == '__main__':
         record_dir = os.path.dirname(args.pretrained)
             
     # Evaluate
-    nn = NearestNeighbour(model=chexnet_encoder, num_classes=dataset.num_classes_multiclass)
-    nn.calculate_prototypes(dataset.train_ds, full=False, max_per_class=2) ## realistically, change to larger number (20)
+    nn = NearestNeighbour(model=chexnet_encoder, dataset=dataset)
+    nn.calculate_prototypes(full=False, max_per_class=2) ## realistically, change to larger number (20)
     
     if args.evaluate:
         print("[INFO] Evaluating performance")
@@ -112,9 +130,9 @@ if __name__ == '__main__':
         y_test_embeddings = chexnet_encoder.predict(dataset.test_ds, verbose=1)
         y_pred = nn.get_nearest_neighbour(y_test_embeddings)
         
-        ## CONTINUE
-        auroc = mean_auroc(y_test_labels, y_pred, dataset, eval=True)
-        mean_AP = average_precision(y_test_labels, y_pred, dataset)
+        ## metrics
+        auroc = mean_auroc(y_test_labels, y_pred, dataset, eval=True, dir_path=checkpoint_dir)
+        mean_AP = average_precision(y_test_labels, y_pred, dataset, dir_path=checkpoint_dir)
         
 
     # Generate tSNE

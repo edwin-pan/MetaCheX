@@ -10,42 +10,44 @@ from supcon.losses import contrastive_loss
 
 def supcon_label_loss_inner(labels, features):
     features = tf.expand_dims(features, axis=1)
-    return contrastive_loss(features, labels)
+    
+    loss = contrastive_loss(features, labels)
+    return loss
 
 
 class Losses():
     
     def __init__(self, class_weights=None, child_to_parent_map=None, train_stage=None,
-                 emb_path="training_progress/parent_emb.pkl", batch_size=8, 
-                 num_indiv_parents=27, embed_dim=128,
+                 parent_emb_path="training_progress/parent_emb.npy", batch_size=8, 
+                 embed_dim=128,
                  parent_multiclass_labels_path=os.path.join(PATH_TO_DATA_FOLDER, 'parent_multiclass_labels.npy'),
-                 stage_num=1, childparent_lambda=1):
+                 stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weight=1.):
         """
         child_to_parent_map: mapping of multiclass labels to a list of their parents
                 format: {child multiclass label (int) : list[parent multitask indices (int)]}
                 e.g: {122: array([2, 6])}
+        embedding_matrix: [27 x 128] -- parent labels are in alphabetical order
         """
-        self.num_indiv_parents = num_indiv_parents # store depth for creating one-hot labels on fly
-        self.embedding_matrix = np.zeros((num_indiv_parents, embed_dim)) ## [27 x 128] -- parent labels are in alphabetical order
+        if child_to_parent_map is not None: ## includes childParent
+            self.embedding_matrix = np.load(parent_emb_path) ## [27 x 128]
+        
+        self.parent_weight = parent_weight
+        self.child_weight = child_weight
+        self.stage2_weight = stage2_weight
         
         ## each entry corresponds to multiclass label for that multitask index
+        ## parents who do not exist individually will be marked by a -1 in the self.parent_multiclass_labels array
         self.parent_multiclass_labels = np.load(parent_multiclass_labels_path) ## (27, ) 
         
         if child_to_parent_map is not None:
             self.child_indices = child_to_parent_map.keys()
-#         if train_stage == 1: # Save parent embeddings [Need to save with callback]
-#             self.embedding_map = #dict(zip(list(range(0,27)), [None]*27))
-            
-#         elif train_stage == 2: # Load & update embedding_map 
-#             with open(emb_path, 'rb') as handle:
-#                 self.embedding_map = pickle.load(handle)
             
         self.class_weights = class_weights
         self.batch_size = batch_size
         
         self.child_to_parent_map = child_to_parent_map 
-        self.childparent_lambda = childparent_lambda
         self.stage_num = train_stage
+        
         
     def weighted_binary_crossentropy(self):
         """class_weights: array of size (27, )"""
@@ -64,21 +66,8 @@ class Losses():
             y_true_fat = y_true.reshape([-1, y_true.shape[1], 1])
             y_pred_fat = y_pred.reshape([-1, y_pred.shape[1], 1])
 
-            # print(y_true_fat.shape, y_pred_fat.shape)
             return new_weight*bce(y_true_fat, y_pred_fat)
         return weighted_loss
-    
-    
-    def supcon_full_loss(self):
-        """
-        features (ie the z's): [batch_size, embedding_dim]
-        labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
-        """
-        
-        def supcon_class_loss_inner(labels, features):
-            return class_contrastive_loss(self, labels, features)
-        
-        return supcon_label_loss_inner + self.childparent_lambda * supcon_class_loss_inner
     
     
     def supcon_label_loss(self):
@@ -98,32 +87,50 @@ class Losses():
         column vector is the embedding of parent with label i.
         """
         losses, class_labels = [], []
-        weight = self.childparent_lambda
-        depth = self.num_indiv_parents
+        weight = self.parent_weight
+        child_weight = self.child_weight
+        depth = self.parent_multiclass_labels.shape[0] ## 27
         if self.stage_num == 2:
             # For each example in labels, find index where example[index] == 1
             class_labels = np.where(labels == 1)[1]
-            for i, label in enumerate(0, class_labels):
-                depth = 27 # embeding dimension
-                if label >= 0 and label <= 26: # Parent label
+            for i, multiclass_label in enumerate(class_labels):
+                ## Note: will never encounter parents that do not exist individually (because not in dataset)
+                if multiclass_label in self.parent_multiclass_labels: # Parent label (multiclass)
+                    ## Get corresponding multitask label
+                    multitask_label = np.where(self.parent_multiclass_labels == multiclass_label)[0][0]
                     # Update embedding dict with weighted average of existing embedding and mean batch embedding for label
-                    one_hot_label = tf.one_hot(label, depth)
-                    self.embedding_matrix[label] = weight*one_hot_label.dot(self.embedding_matrix) + \
-                        (1-weight)*tf.reduce_mean(features[np.where(class_labels=label)], axis=0)
-                    losses.append(np.zeros(labels[0].shape)) # No childParent loss for parent
-
+                    self.embedding_matrix[multitask_label] = weight*self.embedding_matrix[multitask_label] + \
+                        (1-weight)*tf.reduce_mean(features[np.where(class_labels==multiclass_label)], axis=0)
+                    losses.append(np.zeros(labels.shape[1])) # No childParent loss for parent
                 else: # If child, compute loss with average parent embedding as stored in self.embedding_matrix
-                    depth = self.embedding_matrix.shape[0] #
-                    one_hot_parents = tf.one_hot(self.child_to_parent_map[label], depth)
-                    avg_parent_emb = tf.reduce_mean(one_hot_parents.dot(self.embedding_matrix))
-                    losses.append(tf.math.square(avg_parent_emb - features[i])) # squared loss
+                    parent_indices = self.child_to_parent_map[multiclass_label]
+                    avg_parent_embeds = tf.reduce_mean(self.embedding_matrix[parent_indices], axis=0)
+                    
+                    ## Update parent embeddings if parent does not exist by itself
+                    parents_no_indiv = parent_indices[self.parent_multiclass_labels[parent_indices] == -1]
+                    
+                    self.embedding_matrix[parents_no_indiv] = child_weight * self.embedding_matrix[parents_no_indiv] + \
+                                                              (1 - child_weight) * features[i]
+                    
+                    losses.append(tf.reduce_mean(tf.math.square(avg_parent_embeds - features[i]), axis=1)) # squared loss
 
             losses = tf.convert_to_tensor(losses)
             return losses
         else:
-            return tf.zeros(features.shape)
+            return tf.zeros(self.batch_size)
 
+        
+    def supcon_full_loss(self):
+        """
+        features (ie the z's): [batch_size, embedding_dim]
+        labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
+        """
 
-# for children in batch, find parent embeddings and compute average embedding + loss v
-## TODO
-# TODO: Implement vectorized-dotprod for measuring how "in-the-middle" the child is
+        def supcon_class_loss_inner(labels, features):
+            loss = self.stage2_weight * self.class_contrastive_loss(labels, features)
+            return loss
+
+        def supcon_full_loss_inner(labels, features):
+            return supcon_label_loss_inner(labels, features) + supcon_class_loss_inner(labels, features)
+
+        return supcon_full_loss_inner

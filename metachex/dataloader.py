@@ -12,179 +12,17 @@ from glob import glob
 from metachex.configs.config import *
 # from configs.config import *
 
-from tensorflow.keras.utils import Sequence
 from PIL import Image
 import sklearn
 from skimage.transform import resize
 
+from metachex.image_sequence import ImageSequence, ProtoNetImageSequence
+
 np.random.seed(271)
 
-
-class ProtoNetImageSequence(ImageSequence):
-    
-    def __init__(self, df, num_classes, num_samples_per_class, 
-                 batch_size=8, target_size=(224, 224), verbose=0, steps=None, shuffle_on_epoch_end=True, 
-                 random_state=271):
-        
-        self.df = df
-        self.num_classes = num_classes
-        self.num_samples_per_class = num_samples_per_class
-        self.batch_size = batch_size
-        self.target_size = target_size
-        self.verbose = verbose
-        self.shuffle = shuffle_on_epoch_end
-        self.random_state = random_state
-        self.prepare_dataset()
-        
-        
-    def __getitem__(self, idx):
-        
-        """
-        batch_x: [num_classes x num_samples_per_class, 224, 224, 3]
-        batch_y: [num_classes x num_samples_per_class, num_classes] (one-hot labels)
-        """
-        
-        batch_x_path = self.path_batches[idx].flatten()
-        batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
-        batch_y = np.eye(self.num_classes)[self.label_batches[idx].flatten()] 
-        
-        return batch_x, batch_y
-    
-    def prepare_dataset(self):
-        """
-        all_path_batches: [batch_size, num_classes, num_samples_per_class]
-        all_label_batches: [batch_size, num_classes, num_samples_per_class]
-        """
-        
-        all_path_batches, all_label_batches = [], []
-        
-        for i in range(self.batch_size):
-            ## sample num_classes from the classes in df
-            all_classes = self.df['label_str'].drop_duplicates().values
-            sampled_classes = np.random.choice(all_classes, self.num_classes)
-            
-            truncated_df = self.df[self.df['label_str'] in sampled_classes]
-            
-            ## for each of the num_classes, sample num_samples_per_class samples per class
-            sampled_df = pd.DataFrame(columns=self.df.columns)
-            
-            path_batch = []
-            label_batch = []
-            for i, classname in enumerate(sampled_classes):
-                df_class = truncated_df[truncated_df['label_str'] == classname]
-                df_class = df_class.sample(n=self.num_samples_per_class, random_state=self.random_state)
-                
-                path_batch.append(df_classes['image_path'].values)
-                label_batch.append([i] * self.num_samples_per_class)
-            
-            
-            path_batch = np.array(path_batch)
-            label_batch = np.array(label_batch).astype(int) ## categorical
-            
-            batch = np.concatenate([path_batch, label_batch], 2)
-            
-            ## shuffle matrix
-            if shuffle:
-                for p in range(self.num_samples_per_class):
-                    np.random.shuffle(batch[:, p])
-                    
-            path_batch = batch[:, :, 0]
-            label_batch = batch[:, :, 1]
-            
-            all_path_batches.append(path_batch)
-            all_label_batches.append(label_batch)
-                
-        self.path_batches = np.stack(all_path_batches)
-        self.label_batches = np.stack(all_label_batches)
-
-    def on_epoch_end(self):
-        if self.shuffle:
-            self.random_state += 1
-            self.prepare_dataset()
-
-            
-class ImageSequence(Sequence):
-    """
-    Class was adapted from CheXNet implementation
-    """
-
-    def __init__(self, df, batch_size=8,
-                 target_size=(224, 224), augmenter=None, verbose=0, steps=None,
-                 shuffle_on_epoch_end=True, random_state=271, num_classes=27, multiclass=False):
-        """
-        :param df: dataframe of all the images for a specific split (train, val or test)
-        :param batch_size: int
-        :param target_size: tuple(int, int)
-        :param augmenter: imgaug object. Do not specify resize in augmenter.
-                          It will be done automatically according to input_shape of the model.
-        :param verbose: int
-        """
-        self.df = df
-        self.batch_size = batch_size
-        self.target_size = target_size
-        self.verbose = verbose
-        self.shuffle = shuffle_on_epoch_end
-        self.random_state = random_state
-        self.num_classes = num_classes
-        self.multiclass = multiclass
-        self.prepare_dataset()
-        if steps is None:
-            self.steps = int(np.ceil(len(self.x_path) / float(self.batch_size)))
-        else:
-            self.steps = int(steps)
-
-    def __bool__(self):
-        return True
-
-    def __len__(self):
-        return self.steps
-
-    def __getitem__(self, idx):
-        
-        end_idx = min((idx + 1) * self.batch_size, self.x_path.shape[0])
-        
-        batch_x_path = self.x_path[idx * self.batch_size:end_idx]
-        batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
-        batch_y = self.y[idx * self.batch_size:end_idx]
-        return batch_x, batch_y
-
-    def load_image(self, image_path):
-        image = Image.open(image_path)
-        image_array = np.asarray(image.convert("RGB"))
-        image_array = image_array / 255.
-        image_array = resize(image_array, self.target_size)
-        return image_array
-
-    def get_y_true(self):
-        """
-        Use this function to get y_true for predict_generator
-        In order to get correct y, you have to set shuffle_on_epoch_end=False.
-        """
-        if self.shuffle:
-            raise ValueError("""
-            You're trying run get_y_true() when generator option 'shuffle_on_epoch_end' is True.
-            """)
-        
-        end_idx = min(self.steps*self.batch_size, self.y.shape[0])
-        return self.y[:self.steps*self.batch_size, :]
-
-    def prepare_dataset(self):
-        df = self.df.sample(frac=1., random_state=self.random_state)
-        self.x_path = df['image_path']
-        if self.multiclass:
-            self.y = np.eye(int(self.num_classes))[df['label_num_multi'].values.astype(int)]
-        else:
-            self.y = np.array(df['label_multitask'].to_list())
-        print("self.y.shape: ", self.y.shape)
-
-    def on_epoch_end(self):
-        if self.shuffle:
-            self.random_state += 1
-            self.prepare_dataset()
-
-
 class MetaChexDataset():
-    def __init__(self, shuffle_train=True, multiclass=False, protonet=False, batch_size=8, n=3, k=5, n_test=3, k_test=5):
+    def __init__(self, shuffle_train=True, multiclass=False, protonet=False, batch_size=8, 
+                 n=3, k=5, n_query=5, n_test=3, k_test=5, n_test_query=5):
         self.batch_size = batch_size
         self.multiclass = multiclass
         
@@ -216,18 +54,19 @@ class MetaChexDataset():
             self.parent_multiclass_labels = np.ones((self.num_classes_multitask,)) * -1 
             self.get_child_to_parent_mapping()
             self.get_num_parents_to_count_df()
-            self.num_classes_multiclass_plus = np.max(self.parent_multiclass_labels)
+#             self.num_classes_multiclass_plus = np.max(self.parent_multiclass_labels)
 
         print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
         print("[INFO] shuffle & batch")
         if protonet:
             [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits(self.df_condensed, 
-                                                                                            n, k, n_test, k_test,
+                                                                                            n, k, n_query, n_test, k_test,
+                                                                                            n_test_query,
                                                                                             shuffle_train=shuffle_train)
         elif multiclass:
             [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
-            self.stage1_ds = self.get_supcon_stage1_ds()
+#             self.stage1_ds = self.get_supcon_stage1_ds()
         else:
             [self.train_ds, self.val_ds, self.test_ds] = self.get_multitask_generator_splits(self.df_condensed, 
                                                                                              shuffle_train=shuffle_train)
@@ -236,7 +75,8 @@ class MetaChexDataset():
         return
 
     
-    def get_protonet_generator_splits(self, df, n, k, n_test, k_test, split=(0.8, 0.1, 0.1), shuffle_train=True):
+    def get_protonet_generator_splits(self, df, n, k, n_query, n_test, k_test, n_test_query, 
+                                      split=(0.8, 0.1, 0.1), shuffle_train=True):
         """
         Get datasets for train, val and test (n-way, k-shot)
         """
@@ -261,54 +101,16 @@ class MetaChexDataset():
         datasets = []
         for i, ds_type in enumerate(ds_types):
             shuffle_on_epoch_end = False
-            num_classes, num_samples_per_class = n, k
+            num_classes, num_samples_per_class, num_queries = n, k, n_query
             if ds_type == 'train':
                 shuffle_on_epoch_end = True
             elif ds_type == 'test':
-                num_classes, num_samples_per_class = n_test, k_test
+                num_classes, num_samples_per_class, num_queries = n_test, k_test, n_query_test
             
             ds = ProtoNetImageSequence(dfs[i], num_classes=num_classes, num_samples_per_class=num_samples_per_class, 
-                                       batch_size=self.batch_size, shuffle_on_epoch_end=shuffle_on_epoch_end)
+                                       num_queries=num_queries, batch_size=self.batch_size, 
+                                       shuffle_on_epoch_end=shuffle_on_epoch_end)
     
-    
-    def get_supcon_stage1_ds(self):
-        """
-        Get dataset for stage1 training (indiv parents and children of parents that don't exist individually)
-        in training set
-        """
-        ## Extract rows of indiv parents
-        label_num_multi_arr = self.train_df['label_num_multi'].values
-        mask = np.in1d(label_num_multi_arr, self.parent_multiclass_labels)
-        indices = np.arange(mask.shape[0])[mask]
-        indiv_parent_rows = self.train_df.iloc[indices]
-        
-        ## Extract children of parents that don't exist individually
-        combo_parent_mask = ~np.in1d(self.parent_multiclass_labels, np.unique(indiv_parent_rows['label_num_multi'].values))
-        combo_parent_indices = np.arange(combo_parent_mask.shape[0])[combo_parent_mask]
-#         print(combo_parent_indices)
-        
-        label_multitask_arr = np.array(self.train_df['label_multitask'].to_list()) 
-        row_indices, multitask_indices = np.where(label_multitask_arr == 1)
-        
-        children_row_indices = []
-        for i, row in self.train_df.iterrows():
-            ## get rows where there is a non-empty intersection between combo_parent_indices and row multitask indices
-            indices_for_row = np.where(row_indices == i)
-            multitask_indices_for_row = multitask_indices[indices_for_row]
-            
-            inter = np.intersect1d(combo_parent_indices, multitask_indices_for_row)
-            if inter.shape[0] > 0: 
-                children_row_indices.append(i)
-
-        children_rows = self.train_df.iloc[children_row_indices]
-        
-        stage1_df = indiv_parent_rows.append(children_rows).reset_index(drop=True)
-        steps = int(len(stage1_df) / self.batch_size * 0.1)
-        
-        stage1_ds = ImageSequence(df=stage1_df, steps=steps, shuffle_on_epoch_end=True, 
-                               num_classes=self.num_classes_multiclass_plus, multiclass=True, batch_size=self.batch_size)
-    
-        return stage1_ds
         
     def get_num_parents_to_count_df(self):
         
@@ -370,14 +172,15 @@ class MetaChexDataset():
                 if self.parent_multiclass_labels[multitask_indices_for_row[0]] == -1:
                     self.parent_multiclass_labels[multitask_indices_for_row[0]] = parent_label_num_multi
         
+        ## parents who do not exist individually will be marked by a -1 in the self.parent_multiclass_labels array
         
         ## Populate the rest of the self.parent_multiclass_labels (parents that only exist as combos)
         ## I realized that this is not necessary, but just in case we somehow need it
-        indiv_parent_indices = np.where(self.parent_multiclass_labels == -1)[0]
-        self.parent_multiclass_labels[indiv_parent_indices] = np.arange(indiv_parent_indices.shape[0]) \
-                                                                + self.num_classes_multiclass
+#         indiv_parent_indices = np.where(self.parent_multiclass_labels == -1)[0]
+#         self.parent_multiclass_labels[indiv_parent_indices] = np.arange(indiv_parent_indices.shape[0]) \
+#                                                                 + self.num_classes_multiclass
         
-        print(self.parent_multiclass_labels)
+#         print(self.parent_multiclass_labels)
 
         self.num_parents_list = num_parents
     
@@ -410,7 +213,7 @@ class MetaChexDataset():
         with open(self.child_to_parent_map_path, 'wb') as file:
             pickle.dump(self.child_to_parent_map, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-        print(self.child_to_parent_map)
+#         print(self.child_to_parent_map)
         
         
     def get_data_stats(self, df):
@@ -483,20 +286,20 @@ class MetaChexDataset():
             
             df_subsplit = df_other.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
             
-            if len(df_subsplit) > 0:
-                print(i)
+#             if len(df_subsplit) > 0:
+#                 print(i)
             
             test_idx = int(len(df_subsplit) * split[0])
             df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(test_idx))
             df_other_splits[1] = df_other_splits[1].append(df_subsplit[test_idx:])
         
-        df_combined = nih_dataframes[0].append(df_other_splits[0])
-        untrained_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
-        print(f'classes not trained on: {untrained_classes}')
+#         df_combined = nih_dataframes[0].append(df_other_splits[0])
+#         untrained_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
+#         print(f'classes not trained on: {untrained_classes}')
         
-        df_combined = nih_dataframes[1].append(df_other_splits[1])
-        untested_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
-        print(f'classes not tested on: {untested_classes}, num: {len(untested_classes)}')
+#         df_combined = nih_dataframes[1].append(df_other_splits[1])
+#         untested_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
+#         print(f'classes not tested on: {untested_classes}, num: {len(untested_classes)}')
 #         exit(1)
         
         full_datasets = []
@@ -519,7 +322,7 @@ class MetaChexDataset():
                 
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
             ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
-                               num_classes=self.num_classes_multiclass_plus, multiclass=True, batch_size=self.batch_size)
+                               num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size)
             full_datasets.append(ds)
         
         return full_datasets
@@ -756,7 +559,7 @@ class MetaChexDataset():
         
         if self.multiclass:
             label_df = df[['label_num_multi', 'label_str']].drop_duplicates().sort_values('label_num_multi')
-            self.unique_labels = label_df['label_str'].values
+            self.unique_labels = label_df.sort_values(by=['label_num_multi'])['label_str'].values
             
         return df
     

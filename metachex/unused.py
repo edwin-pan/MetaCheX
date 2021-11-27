@@ -242,3 +242,68 @@ class ChexNetWithSupCon():
                                                            val_supcon_loss_logs[1][-1], val_supcon_loss_logs[2][-1])          
 
         return val_supcon_loss_log
+
+    def get_supcon_stage1_ds(self):
+        """
+        Get dataset for stage1 training (indiv parents and children of parents that don't exist individually)
+        in training set
+        """
+        stage1_df = pd.DataFrame(columns=self.train_df.columns)
+        
+        label_multitask_arr = np.array(self.train_df['label_multitask'].to_list()) ## [len(train_df), 27]
+        row_indices, multitask_indices = np.where(label_multitask_arr == 1)
+
+        for i, label in enumerate(self.parent_multiclass_labels):
+            if label != -1: ## Sample parents that exist individually
+                df_class = self.train_df[self.train_df['label_num_multi'] == label]
+
+            else: ## get children of parents that don't exist individually
+                ## Get rows where multitask_indices includes i
+                children_rows = row_indices[multitask_indices == i]
+                df_class = train_df.iloc[children_rows]
+
+            df_class['parent_id'] = i ## label with parent class
+            stage1_df = stage1_df.append(df_class)
+
+        stage1_df = stage1_df.reset_index(drop=True)
+        steps = int(len(stage1_df) / self.batch_size * 0.1)
+        
+        stage1_ds = ImageSequence(df=stage1_df, steps=steps, shuffle_on_epoch_end=True, parents_only=True,
+                               num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size)
+    
+        return stage1_ds
+        
+        
+        ## Extract rows of indiv parents
+#         label_num_multi_arr = self.train_df['label_num_multi'].values
+#         mask = np.in1d(label_num_multi_arr, self.parent_multiclass_labels)
+#         indices = np.arange(mask.shape[0])[mask]
+#         indiv_parent_rows = self.train_df.iloc[indices]
+        
+#         ## Extract children of parents that don't exist individually
+#         combo_parent_mask = ~np.in1d(self.parent_multiclass_labels, np.unique(indiv_parent_rows['label_num_multi'].values))
+#         combo_parent_indices = np.arange(combo_parent_mask.shape[0])[combo_parent_mask]
+# #         print(combo_parent_indices)
+        
+#         label_multitask_arr = np.array(self.train_df['label_multitask'].to_list()) 
+#         row_indices, multitask_indices = np.where(label_multitask_arr == 1)
+        
+#         children_row_indices = []
+#         for i, row in self.train_df.iterrows():
+#             ## get rows where there is a non-empty intersection between combo_parent_indices and row multitask indices
+#             indices_for_row = np.where(row_indices == i)
+#             multitask_indices_for_row = multitask_indices[indices_for_row]
+            
+#             inter = np.intersect1d(combo_parent_indices, multitask_indices_for_row)
+#             if inter.shape[0] > 0: 
+#                 children_row_indices.append(i)
+
+#         children_rows = self.train_df.iloc[children_row_indices]
+        
+#         stage1_df = indiv_parent_rows.append(children_rows).reset_index(drop=True)
+#         steps = int(len(stage1_df) / self.batch_size * 0.1)
+        
+#         stage1_ds = ImageSequence(df=stage1_df, steps=steps, shuffle_on_epoch_end=True, 
+#                                num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size)
+    
+#         return stage1_ds
