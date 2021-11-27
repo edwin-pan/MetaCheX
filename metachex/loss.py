@@ -45,7 +45,7 @@ class Losses():
         
         self.child_to_parent_map = child_to_parent_map 
         self.childparent_lambda = childparent_lambda
-        self.stage_num = stage_num
+        self.stage_num = train_stage
         
     def weighted_binary_crossentropy(self):
         """class_weights: array of size (27, )"""
