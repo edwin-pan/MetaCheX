@@ -121,7 +121,7 @@ class ProtoNetImageSequence(ImageSequence):
         """
         
         batch_x_path = self.path_batches[idx].flatten()
-        batch_q_path = np.asarray([self.load_image(x_path) for x_path in self.path_query_batches[idx]]) 
+        batch_q = np.asarray([self.load_image(x_path) for x_path in self.path_query_batches[idx]]) 
         batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
         batch_x = np.concatenate((batch_x, batch_q), axis=0)
         
@@ -131,7 +131,7 @@ class ProtoNetImageSequence(ImageSequence):
         
         return batch_x, batch_y
     
-    def prepare_dataset(self):
+    def prepare_dataset(self, shuffle=False):
         """
         all_path_batches: [batch_size, num_classes, num_samples_per_class]
         all_label_batches: [batch_size, num_classes, num_samples_per_class]
@@ -148,21 +148,20 @@ class ProtoNetImageSequence(ImageSequence):
             truncated_df = self.df[self.df['label_str'] in sampled_classes]
             
             ## for each of the num_classes, sample num_samples_per_class samples per class
-            sampled_df = pd.DataFrame(columns=self.df.columns)
             query_df = pd.DataFrame(columns=self.df.columns) 
             
             path_batch = []
             label_batch = []
-            for i, classname in enumerate(sampled_classes):
+            for j, classname in enumerate(sampled_classes):
                 df_class = truncated_df[truncated_df['label_str'] == classname]
                 df_class_sampled = df_class.sample(n=self.num_samples_per_class, random_state=self.random_state)
                 
                 df_class_query = pd.concat([df_class,df_class_sampled]).drop_duplicates(keep=False) 
-                df_class_query['label'] = i
+                df_class_query['label'] = j
                 query_df = query_df.append(df_class_query)
                 
                 path_batch.append(df_class_sampled['image_path'].values)
-                label_batch.append([i] * self.num_samples_per_class)
+                label_batch.append([j] * self.num_samples_per_class)
             
             
             ## Sample queries
@@ -177,10 +176,10 @@ class ProtoNetImageSequence(ImageSequence):
             
             batch = np.concatenate([path_batch, label_batch], 2)
             
-            ## shuffle matrix
-            if shuffle:
-                for p in range(self.num_samples_per_class):
-                    np.random.shuffle(batch[:, p])
+#             ## shuffle matrix
+#             if shuffle:
+#                 for p in range(self.num_samples_per_class):
+#                     np.random.shuffle(batch[:, p])
                     
             path_batch = batch[:, :, 0]
             label_batch = batch[:, :, 1]

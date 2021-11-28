@@ -3,6 +3,7 @@ import pandas as pd
 import tensorflow as tf
 from metachex.image_sequence import ImageSequence
 from sklearn.metrics.pairwise import euclidean_distances
+from metachex.utils import get_sampled_df_multiclass
 
 class NearestNeighbour():
     
@@ -22,7 +23,17 @@ class NearestNeighbour():
         self.parents_only = parents_only
     
     
-    def calculate_prototypes(self, full=False, max_per_class=2):
+    def load_prototypes(self, dir_path="."):
+        
+        save_path = os.path.join(dir_path, "prototypes.npy")
+        if os.path.exists(save_path):
+            self.prototypes = np.load(save_path)
+            return self.prototypes
+        else:
+            raise ValueError(f'{save_path} does not exist')
+    
+    
+    def calculate_prototypes(self, full=False, max_per_class=2, dir_path="."):
         """
         Note: this takes a long time if run full ds -- we can also sample max_per_class images per class
         """
@@ -30,7 +41,7 @@ class NearestNeighbour():
         if full:
             df = self.dataset.train_ds.df
         else:
-            df = self.get_sampled_df(self.dataset.train_ds.df, max_per_class)
+            df = get_sampled_df_multiclass(self.dataset.train_ds.df, self.num_classes, self.parents_only, max_per_class)
         
         train_ds = ImageSequence(df, shuffle_on_epoch_end=False, num_classes=self.num_classes, multiclass=True,
                                  parents_only=self.parents_only)
@@ -53,6 +64,11 @@ class NearestNeighbour():
 
         assert(not np.any(counts == 0))
         self.prototypes = embedding_sums / counts
+        
+        ## Save prototypes
+        save_path = os.path.join(dir_path, "prototypes.npy")
+        np.save(save_path, self.prototypes)
+        
         print(self.prototypes.shape)
                                  
     
@@ -69,42 +85,14 @@ class NearestNeighbour():
         
         return np.eye(self.prototypes.shape[1])[pred] ## one-hot
     
-
-    def get_sampled_df(self, train_df, max_per_class=20):
+    
+    def get_soft_predictions(self, queries):
         """
-        Sample max_per_class samples from each class in train_df
-        if self.parents_only, sample only the parents that exist and the children of parents that don't
+        distances: [batch_size, num_classes]
         """
-        sampled_df = pd.DataFrame(columns=train_df.columns)
-
-        if not self.parents_only:
-            for i in range(self.num_classes):
-                df_class = train_df[train_df['label_num_multi'] == i]
-
-                if len(df_class) > max_per_class:
-                    df_class = df_class.sample(max_per_class)
-
-                sampled_df = sampled_df.append(df_class)
-                
-        else: ## to get parent embedding matrix
-            label_multitask_arr = np.array(train_df['label_multitask'].to_list()) ## [len(train_df), 27]
-            row_indices, multitask_indices = np.where(label_multitask_arr == 1)
-            
-            for i, label in enumerate(self.dataset.parent_multiclass_labels):
-                if label != -1: ## Sample parents that exist individually
-                    df_class = train_df[train_df['label_num_multi'] == label]
-
-                else: ## Sample children of parents that don't exist individually
-                    ## Get rows where multitask_indices includes i
-                    children_rows = row_indices[multitask_indices == i]
-                    df_class = train_df.iloc[children_rows]
-                    
-                if len(df_class) > max_per_class:
-                    df_class = df_class.sample(max_per_class)
-                
-                df_class['parent_id'] = i ## label with parent class
-                sampled_df = sampled_df.append(df_class)
-           
-        sampled_df = sampled_df.reset_index(drop=True)
-          
-        return sampled_df
+        distances = euclidean_distances(queries, self.prototypes.T)
+    
+        soft_pred = tf.nn.softmax(logits=-1 * distances)
+        
+        return soft_pred
+      

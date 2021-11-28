@@ -54,6 +54,81 @@ def get_embedding_model(model):
     chexnet_embedder = tf.keras.models.Model(inputs = model.input, outputs = x)
     return chexnet_embedder
 
+def get_sampled_ds(ds, multiclass=True, max_per_class=20):
+    
+    if multiclass:
+        num_classes = ds.num_classes_multiclass
+        sampled_df = get_sampled_df_multiclass(ds.df, num_classes=num_classes, max_per_class=max_per_class)
+    else:
+        num_classes = ds.num_classes_multitask
+        sampled_df = get_sampled_df_multitask(ds.df, num_classes=num_classes, max_per_class=max_per_class)
+    
+    sampled_ds = ImageSequence(df, shuffle_on_epoch_end=False, num_classes=num_classes, multiclass=multiclass)
+    
+    return sampled_ds
+
+
+def get_sampled_df_multitask(train_df, num_classes, max_per_class=20):
+    """
+    Sample max_per_class samples from each (multitask) class in train_df -- repeats are ok
+    """
+    sampled_df = pd.DataFrame(columns=train_df.columns)
+    
+    label_multitask_arr = np.array(train_df['label_multitask'].to_list()) ## [len(train_df), 27]
+    row_indices, multitask_indices = np.where(label_multitask_arr == 1)
+
+    for i in range(num_classes):
+        children_rows = row_indices[multitask_indices == i]
+        df_class = train_df.iloc[children_rows]
+
+        if len(df_class) > max_per_class:
+            df_class = df_class.sample(max_per_class)
+
+        sampled_df = sampled_df.append(df_class)
+    
+    sampled_df = sampled_df.reset_index(drop=True)
+    return sampled_df
+
+def get_sampled_df_multiclass(train_df, num_classes, parents_only=False, max_per_class=20):
+    """
+    Sample max_per_class samples from each class in train_df
+    if self.parents_only, sample only the parents that exist and the children of parents that don't
+    """
+    sampled_df = pd.DataFrame(columns=train_df.columns)
+
+    if not parents_only:
+        for i in range(num_classes):
+            df_class = train_df[train_df['label_num_multi'] == i]
+
+            if len(df_class) > max_per_class:
+                df_class = df_class.sample(max_per_class)
+
+            sampled_df = sampled_df.append(df_class)
+
+    else: ## to get parent embedding matrix
+        label_multitask_arr = np.array(train_df['label_multitask'].to_list()) ## [len(train_df), 27]
+        row_indices, multitask_indices = np.where(label_multitask_arr == 1)
+
+        for i, label in enumerate(self.dataset.parent_multiclass_labels):
+            if label != -1: ## Sample parents that exist individually
+                df_class = train_df[train_df['label_num_multi'] == label]
+
+            else: ## Sample children of parents that don't exist individually
+                ## Get rows where multitask_indices includes i
+                children_rows = row_indices[multitask_indices == i]
+                df_class = train_df.iloc[children_rows]
+
+            if len(df_class) > max_per_class:
+                df_class = df_class.sample(max_per_class)
+
+            df_class['parent_id'] = i ## label with parent class
+            sampled_df = sampled_df.append(df_class)
+
+    sampled_df = sampled_df.reset_index(drop=True)
+
+    return sampled_df
+
+
 def mean_auroc_baseline(y_true, y_pred):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
     aurocs = []
@@ -98,8 +173,11 @@ def average_precision(y_true, y_pred, dataset, dir_path="."):
     with open(test_ap_log_path, "w") as f:
         aps = []
         for i in range(y_true.shape[1]):
-            ap = average_precision_score(y_true[:, i], y_pred[:, i])
-            aps.append(ap)
+            try:
+                ap = average_precision_score(y_true[:, i], y_pred[:, i])
+                aps.append(ap)
+            except RuntimeError:
+                ap = 'N/A'
             f.write(f"{dataset.unique_labels[i]}: {ap}\n")
         mean_ap = np.mean(aps)
         f.write("-------------------------\n")
@@ -133,7 +211,7 @@ def process_tSNE(features, learning_rate=10, perplexity=20):
     return encoded
 
 def plot_tsne(tsne_features, tsne_labels_one_hot, 
-                              lables_names=None, 
+                              label_names=None, 
                               num_subsample=None, 
                               visualize_class_list=None, 
                               plot_title='test', 
@@ -167,7 +245,7 @@ def plot_tsne(tsne_features, tsne_labels_one_hot,
                 tsne_features[tsne_labels==i,0], tsne_features[tsne_labels==i,1], 
                 c=np.repeat(colormap(i, num_classes).reshape(-1,1), [tsne_features[tsne_labels==i,0].shape[0]]).reshape(4,-1).T,
                 alpha=0.9,
-                label=lables_names[i])
+                label=label_names[i])
 
         # Shrink current axis's height by 10% on the bottom
         box = ax.get_position()

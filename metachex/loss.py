@@ -4,6 +4,7 @@ import sys
 import pickle
 import os
 from metachex.configs.config import *
+from sklearn.metrics.pairwise import euclidean_distances
 
 sys.path.append('../') # importing in unit tests
 from supcon.losses import contrastive_loss
@@ -14,6 +15,20 @@ def supcon_label_loss_inner(labels, features):
     loss = contrastive_loss(features, labels)
     return loss
 
+def get_nearest_neighbour(prototypes, queries):
+    """
+    queries: [batch_size, embedding_dim]
+    prototypes: [num_classes, embedding_dim]
+
+    return:
+    one-hot preds: [batch_size, num_classes]
+    """
+
+    distances = euclidean_distances(queries, prototypes)
+    pred = np.argmin(distances, axis=1)
+
+    return np.eye(prototypes.shape[0])[pred] ## one-hot
+
 
 class Losses():
     
@@ -21,7 +36,8 @@ class Losses():
                  parent_emb_path="training_progress/parent_emb.npy", batch_size=8, 
                  embed_dim=128,
                  parent_multiclass_labels_path=os.path.join(PATH_TO_DATA_FOLDER, 'parent_multiclass_labels.npy'),
-                 stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weight=1.):
+                 stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weight=1.,
+                 num_classes=3, num_samples_per_class=5, num_query=5):
         """
         child_to_parent_map: mapping of multiclass labels to a list of their parents
                 format: {child multiclass label (int) : list[parent multitask indices (int)]}
@@ -46,7 +62,11 @@ class Losses():
         self.batch_size = batch_size
         
         self.child_to_parent_map = child_to_parent_map 
-        self.stage_num = train_stage
+        self.stage_num = stage_num
+        
+        self.num_classes = num_classes
+        self.num_samples_per_class = num_samples_per_class
+        self.num_query = num_query
         
         
     def weighted_binary_crossentropy(self):
@@ -134,3 +154,31 @@ class Losses():
             return supcon_label_loss_inner(labels, features) + supcon_class_loss_inner(labels, features)
 
         return supcon_full_loss_inner
+    
+    
+    def proto_loss(self):
+        def proto_loss_inner(labels, features):
+            """
+            labels: [n * k + n_query, n] 
+            features: [n * k + n_query, 128]
+            """
+            support_labels = labels[:self.num_classes * self.num_samples_per_class]
+            support_labels = support_labels.reshape((self.num_classes, self.num_samples_per_class, -1))
+            support_features = features[:num_classes * num_samples_per_class]
+            support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
+            
+            prototypes = tf.reduce_mean(support_features, axis=1)
+            prototype_labels = tf.reduce_mean(support_labels, axis=1)
+            
+            queries = features[-self.num_query:]
+            query_labels = labels[-self.num_query:]
+            
+            query_distances = get_distances(prototypes, queries)
+            
+            loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=-1 * query_distances,
+                                                                          labels=tf.stop_gradient(query_labels)))
+            return loss
+        
+        return proto_loss_inner
+            
+            

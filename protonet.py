@@ -28,8 +28,17 @@ def parse_args():
 def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
     pass
 
+
 def compile():
     pass
+
+
+def load_model():
+    chexnet_encoder = load_chexnet(1) ## any number will do, since we get rid of final dense layer
+    chexnet_encoder = get_embedding_model(chexnet_encoder)
+    chexnet_encoder.trainable = True
+    
+    return chexnet_encoder
 
 if __name__ == '__main__':
     args = parse_args()
@@ -42,10 +51,7 @@ if __name__ == '__main__':
     dataset = MetaChexDataset(protonet=True, batch_size=8, n=3, k=5, n_test=3, k_test=5)
 
     # Load CheXNet
-    chexnet_encoder = load_chexnet(1) ## any number will do, since we get rid of final dense layer
-            
-    chexnet_encoder = get_embedding_model(chexnet_encoder)
-    chexnet_encoder.trainable = True
+    chexnet_encoder = load_model()
     
     print(chexnet_encoder.summary())
     
