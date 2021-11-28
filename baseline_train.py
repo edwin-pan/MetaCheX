@@ -104,10 +104,11 @@ if __name__ == '__main__':
     # Evaluate
     if args.evaluate:
         print("[INFO] Evaluating performance")
+        eval_path = args.ckpt_save_path if args.pretrained is None else args.pretrained
         y_test_true = dataset.test_ds.get_y_true() 
         y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
         
-        dir_path = os.path.dirname(args.ckpt_save_path)
+        dir_path = os.path.dirname(eval_path)
         mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
         average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
 

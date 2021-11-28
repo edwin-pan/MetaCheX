@@ -25,6 +25,7 @@ def compile():
 
     chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
                     loss=loss_fn.supcon_label_loss(),
+                    # metrics=
                     run_eagerly=True)
                   
 
@@ -131,9 +132,3 @@ if __name__ == '__main__':
         tsne_labels = sampled_ds.get_y_true()
 
         plot_tsne(tsne_feats, tsne_labels, label_names=tsne_dataset.unique_labels)
-
-    
-    
-                  
-                  
-

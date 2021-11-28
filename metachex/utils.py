@@ -216,20 +216,16 @@ def plot_tsne(tsne_features, tsne_labels_one_hot,
                               visualize_class_list=None, 
                               plot_title='test', 
                               save_path='test.png'):
-
+    """ Plots all given embeddings, but allows for plotting only some classes. """
     tsne_labels = np.argmax(tsne_labels_one_hot, axis=-1)
     num_classes = tsne_labels_one_hot.shape[-1]
     num_samples = tsne_labels_one_hot.shape[0]
-
-    if num_subsample is not None:
-        # TODO:Visualize subset of samples
-        pass
 
     if visualize_class_list is not None:
         # TODO: Visualize subset of classes
         pass
 
-    if lables_names is None:
+    if label_names is None:
         plt.figure()
         plt.scatter(tsne_features[...,0], tsne_features[...,1], c=tsne_labels, cmap=plt.cm.get_cmap('viridis', num_classes))
         plt.title(plot_title)
