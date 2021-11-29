@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from sklearn import manifold
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, average_precision_score
 from metachex.configs.config import *
+from sklearn.metrics.pairwise import euclidean_distances
 
 colormap =  lambda x, N: np.array(matplotlib.cm.get_cmap('viridis')(x/N))
 
@@ -182,6 +183,55 @@ def average_precision(y_true, y_pred, dataset, dir_path="."):
         mean_ap = np.mean(aps)
         f.write("-------------------------\n")
         f.write(f"mean average precision: {mean_ap}\n")
+
+
+def proto_acc():
+    def proto_acc_inner(labels, features):
+        """
+        labels: [n * k + n_query, n] 
+        features: [n * k + n_query, 128]
+        """
+        support_labels = labels[:self.num_classes * self.num_samples_per_class]
+        support_labels = support_labels.reshape((self.num_classes, self.num_samples_per_class, -1))
+        support_features = features[:num_classes * num_samples_per_class]
+        support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
+            
+        prototypes = tf.reduce_mean(support_features, axis=1)
+        prototype_labels = tf.reduce_mean(support_labels, axis=1)
+            
+        queries = features[-self.num_query:]
+        query_labels = labels[-self.num_query:]
+        query_labels_cat = np.where(query_labels == 1)[1] ## get categorical labels
+            
+        query_preds = get_nearest_neighbour(prototypes, queries)
+           
+        num_correct = np.where(query_preds == query_labels_cat)[0].shape[0]
+        total_num = labels.shape[0]
+        acc = num_correct / total_num
+        return acc
+
+
+def get_nearest_neighbour(prototypes, queries):
+    """
+    queries: [batch_size, embedding_dim]
+    prototypes: [num_classes, embedding_dim]
+
+    return:
+    categorical preds: (batch_size, )
+    """
+
+    distances = euclidean_distances(queries, prototypes)
+    pred = np.argmin(distances, axis=1)
+    
+    return pred ## (batch_size,) (categorical)
+    #return np.eye(prototypes.shape[0])[pred] ## one-hot
+
+
+def get_distances(prototypes, queries):
+    distances = euclidean_distances(queries, prototypes)
+    
+    return distances
+
 
 def generate_metric_plots(filepath): 
     ''' Generate plots with training and validation metrics. 

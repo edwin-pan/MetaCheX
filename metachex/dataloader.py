@@ -22,7 +22,8 @@ np.random.seed(271)
 
 class MetaChexDataset():
     def __init__(self, shuffle_train=True, multiclass=False, protonet=False, batch_size=8, 
-                 n=3, k=5, n_query=5, n_test=3, k_test=5, n_test_query=5):
+                 n=3, k=5, n_query=5, n_test=3, k_test=5, n_test_query=5,
+                 num_meta_train_episodes=100, num_meta_test_episodes=1000):
         self.batch_size = batch_size
         self.multiclass = multiclass
         
@@ -64,6 +65,10 @@ class MetaChexDataset():
                                                                                             n, k, n_query, n_test, k_test,
                                                                                             n_test_query,
                                                                                             shuffle_train=shuffle_train)
+            self.n, self.k, self.n_query = n, k, n_query
+            self.n_test, self.k_test, self.n_test_query = n_test, k_test, n_test_query
+            self.num_meta_train_episodes = num_meta_train_episodes
+            self.num_meta_test_episodes = num_meta_test_episodes
         elif multiclass:
             [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
 #             self.stage1_ds = self.get_supcon_stage1_ds()
@@ -104,10 +109,15 @@ class MetaChexDataset():
             num_classes, num_samples_per_class, num_queries = n, k, n_query
             if ds_type == 'train':
                 shuffle_on_epoch_end = True
+                steps = self.num_meta_train_episodes 
             elif ds_type == 'test':
                 num_classes, num_samples_per_class, num_queries = n_test, k_test, n_query_test
+                steps = self.num_meta_test_episodes 
+            else: # val
+                steps = 1 
             
-            ds = ProtoNetImageSequence(dfs[i], num_classes=num_classes, num_samples_per_class=num_samples_per_class, 
+            ds = ProtoNetImageSequence(dfs[i], steps=steps, num_classes=num_classes, 
+                                       num_samples_per_class=num_samples_per_class, 
                                        num_queries=num_queries, batch_size=self.batch_size, 
                                        shuffle_on_epoch_end=shuffle_on_epoch_end)
     

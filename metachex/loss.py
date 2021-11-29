@@ -4,7 +4,7 @@ import sys
 import pickle
 import os
 from metachex.configs.config import *
-from sklearn.metrics.pairwise import euclidean_distances
+from metachex.utils import get_distances
 
 sys.path.append('../') # importing in unit tests
 from supcon.losses import contrastive_loss
@@ -14,20 +14,6 @@ def supcon_label_loss_inner(labels, features):
     
     loss = contrastive_loss(features, labels)
     return loss
-
-def get_nearest_neighbour(prototypes, queries):
-    """
-    queries: [batch_size, embedding_dim]
-    prototypes: [num_classes, embedding_dim]
-
-    return:
-    one-hot preds: [batch_size, num_classes]
-    """
-
-    distances = euclidean_distances(queries, prototypes)
-    pred = np.argmin(distances, axis=1)
-
-    return np.eye(prototypes.shape[0])[pred] ## one-hot
 
 
 class Losses():
@@ -67,6 +53,10 @@ class Losses():
         self.num_classes = num_classes
         self.num_samples_per_class = num_samples_per_class
         self.num_query = num_query
+        self.num_classes = num_classes
+        self.num_samples_per_class = num_samples_per_class
+        self.num_query = num_query
+        self.meta_test = meta_test
         
         
     def weighted_binary_crossentropy(self):
@@ -175,8 +165,8 @@ class Losses():
             
             query_distances = get_distances(prototypes, queries)
             
-            loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=-1 * query_distances,
-                                                                          labels=tf.stop_gradient(query_labels)))
+            loss = tf.nn.softmax_cross_entropy_with_logits(logits=-1 * query_distances,
+                                                                          labels=tf.stop_gradient(query_labels))
             return loss
         
         return proto_loss_inner

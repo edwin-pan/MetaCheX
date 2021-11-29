@@ -138,7 +138,7 @@ if __name__ == '__main__':
     # Generate tSNE
     if args.tsne:
         print("[INFO] Generating tSNE plots")
-        tsne_dataset = MetaChexDataset(shuffle_train=False)
+        #tsne_dataset = MetaChexDataset(shuffle_train=False)
 
         embedding_save_path = os.path.join(record_dir, 'embeddings.npy')
         sampled_ds_save_path = os.path.join(record_dir, 'sampled_ds.pkl')
@@ -153,7 +153,7 @@ if __name__ == '__main__':
         
         else:
             print(f"[INFO] Train ds sampled. Saving to {sampled_ds_save_path}")
-            sampled_ds = get_sampled_ds(tsne_dataset.train_ds, multiclass=True, max_per_class=20)
+            sampled_ds = get_sampled_ds(dataset.train_ds, multiclass=True, max_per_class=20)
             with open(sampled_ds_save_path, 'wb') as file:
                 pickle.dump(sampled_ds_save_path, file)
                 
@@ -164,7 +164,7 @@ if __name__ == '__main__':
         tsne_feats = process_tSNE(training_embeddings)
         tsne_labels = sampled_ds.get_y_true()
 
-        plot_tsne(tsne_feats, tsne_labels, label_names=tsne_dataset.unique_labels)
+        plot_tsne(tsne_feats, tsne_labels, label_names=dataset.unique_labels)
 
     
     
