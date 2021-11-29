@@ -124,13 +124,6 @@ if __name__ == '__main__':
         embedding_save_path = os.path.join(record_dir, 'embeddings.npy')
         sampled_ds_save_path = os.path.join(record_dir, 'sampled_ds.pkl')
         # generating embeddings can take some time. Load if possible
-        if os.path.isfile(embedding_save_path):
-            print(f"[INFO] Embeddings already processed. Loading from {embedding_save_path}")
-            training_embeddings = np.load(embedding_save_path)
-        else:
-            print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
-            training_embeddings = chexnet_embedder.predict(sampled_ds, verbose=1)
-            np.save(embedding_save_path, training_embeddings)
 
         if os.path.isfile(sampled_ds_save_path):
             print(f"[INFO] Loading sampled dataset {sampled_ds_save_path}")
@@ -142,6 +135,14 @@ if __name__ == '__main__':
             with open(sampled_ds_save_path, 'wb') as file:
                 pickle.dump(sampled_ds, file)
                 
+        if os.path.isfile(embedding_save_path):
+            print(f"[INFO] Embeddings already processed. Loading from {embedding_save_path}")
+            training_embeddings = np.load(embedding_save_path)
+        else:
+            print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
+            training_embeddings = chexnet_embedder.predict(sampled_ds, verbose=1)
+            np.save(embedding_save_path, training_embeddings)
+        
         tsne_feats = process_tSNE(training_embeddings)
         tsne_labels = sampled_ds.get_y_true()
 
