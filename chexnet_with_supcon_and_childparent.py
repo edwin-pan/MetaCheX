@@ -17,7 +17,8 @@ def parse_args():
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
     parser.add_argument('-c', '--ckpt_save_path', default='training_progress_supcon_childparent/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
-    parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
+    parser.add_argument('-n1', '--num_epochs_stage_1', type=int, default=15, help='Number of epochs to train stage 1 for')
+    parser.add_argument('-n2', '--num_epochs_stage_2', type=int, default=15, help='Number of epochs to train stage 2 for')
     parser.add_argument('-wp', '--parent_weight', type=int, default=0.5, help='Weight for modifying existing parent embedding')
     parser.add_argument('-wc', '--child_weight', type=int, default=0.2, help='Weight for modifying non-existent parent embeddings')
     parser.add_argument('-w2', '--stage2_weight', type=int, default=1., help='Weight for childParent regularizer')
@@ -102,16 +103,19 @@ if __name__ == '__main__':
     # Get weights
     if args.pretrained is None:
         print("[INFO] Beginning Fine Tuning")
+        
         # Train stage 1
-        stage1_hist = train_stage(num_epochs=args.num_epochs, stage_num=1)
+        print("[INFO] Stage 1 Training")
+        stage1_hist = train_stage(num_epochs=args.num_epochs_stage_1, stage_num=1)
         
         # Create embedding matrix for parents
         embed_matrix = create_parent_embed_matrix(model=chexnet_encoder, dataset=dataset, max_num_samples_per_class=2) # change #
         
         # Compile stage 2
+        print("[INFO] Stage 2 Training")
         compile_stage(stage_num=2, parent_weight=args.parent_weight, child_weight=args.child_weight,
                       stage2_weight=args.stage2_weight)
-        stage2_hist = train_stage(num_epochs=args.num_epochs, stage_num=2)
+        stage2_hist = train_stage(num_epochs=args.num_epochs_stage_2, stage_num=2)
         
         record_dir = checkpoint_dir
     else:

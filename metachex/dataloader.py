@@ -52,8 +52,13 @@ class MetaChexDataset():
         if multiclass:
             print("[INFO] get child-to-parents mapping")
             ## list of multiclass labels corresponding to multitask index
-            self.parent_multiclass_labels = np.ones((self.num_classes_multitask,)) * -1 
+            self.parent_multiclass_labels = np.ones((self.num_classes_multitask + 1,)) * -1  ## +1 for 'No Finding' label
             self.get_child_to_parent_mapping()
+#             print(f"child_to_parent_map.keys(): {self.child_to_parent_map.keys()}")
+#             print(f"len(child_to_parent_map.keys(): {len(self.child_to_parent_map.keys())}")
+#             print(f"parent_multiclass_labels: {self.parent_multiclass_labels}")
+#             print(f"indiv parents: {self.parent_multiclass_labels[np.where(self.parent_multiclass_labels != -1)[0]]}")
+#             exit(1)
             self.get_num_parents_to_count_df()
 #             self.num_classes_multiclass_plus = np.max(self.parent_multiclass_labels)
 
@@ -145,11 +150,11 @@ class MetaChexDataset():
         returns: {multiclass_child_ind (0 to 328) : list of multitask parent indices (0 to 26)}
         """
         
-        if os.path.isfile(self.child_to_parent_map_path): ## load from pickle
+        ## load maps and lists
+        if os.path.isfile(self.child_to_parent_map_path) and os.path.isfile(self.parent_multiclass_labels_path): 
             with open(self.child_to_parent_map_path, 'rb') as file:
                 self.child_to_parent_map = pickle.load(file)
             
-            ## Load from pickle
             with open(self.num_parents_list_path, 'rb') as file:
                 self.num_parents_list = pickle.load(file)
             
@@ -182,7 +187,11 @@ class MetaChexDataset():
                 if self.parent_multiclass_labels[multitask_indices_for_row[0]] == -1:
                     self.parent_multiclass_labels[multitask_indices_for_row[0]] = parent_label_num_multi
         
-        ## parents who do not exist individually will be marked by a -1 in the self.parent_multiclass_labels array
+        ## Note: parents who do not exist individually will be marked by a -1 in the self.parent_multiclass_labels array
+        
+        ## Add 'No Finding' multiclass label to self.parent_multiclass_labels
+        no_finding_label = df_labels['label_num_multi'][df_labels['label_str'] == 'No Finding'].drop_duplicates().values[0]               
+        self.parent_multiclass_labels[-1] = no_finding_label
         
         ## Populate the rest of the self.parent_multiclass_labels (parents that only exist as combos)
         ## I realized that this is not necessary, but just in case we somehow need it

@@ -10,6 +10,9 @@ sys.path.append('../') # importing in unit tests
 from supcon.losses import contrastive_loss
 
 def supcon_label_loss_inner(labels, features):
+    """
+    loss.shape (batch_size, )
+    """
     features = tf.expand_dims(features, axis=1)
     
     loss = contrastive_loss(features, labels)
@@ -92,25 +95,26 @@ class Losses():
         """
         features (ie the z's): [batch_size, embedding_dim]
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
-        Assumes self.embedding_matrix is a 27x128 matrix of embedding vectors, where the ith
+        Assumes self.embedding_matrix is a 28x128 matrix of embedding vectors, where the ith
         column vector is the embedding of parent with label i.
+        
+        losses.shape (batch_size, )
         """
-        losses, class_labels = [], []
+        losses = np.zeros(features.shape[0])
         weight = self.parent_weight
         child_weight = self.child_weight
-        depth = self.parent_multiclass_labels.shape[0] ## 27
         if self.stage_num == 2:
             # For each example in labels, find index where example[index] == 1
             class_labels = np.where(labels == 1)[1]
             for i, multiclass_label in enumerate(class_labels):
                 ## Note: will never encounter parents that do not exist individually (because not in dataset)
-                if multiclass_label in self.parent_multiclass_labels: # Parent label (multiclass)
+                if multiclass_label in self.parent_multiclass_labels: # Parent label (multiclass) and 'no finding' label
                     ## Get corresponding multitask label
                     multitask_label = np.where(self.parent_multiclass_labels == multiclass_label)[0][0]
                     # Update embedding dict with weighted average of existing embedding and mean batch embedding for label
                     self.embedding_matrix[multitask_label] = weight*self.embedding_matrix[multitask_label] + \
                         (1-weight)*tf.reduce_mean(features[np.where(class_labels==multiclass_label)], axis=0)
-                    losses.append(np.zeros(labels.shape[1])) # No childParent loss for parent
+                    #losses.append(np.zeros(labels.shape[1])) # No childParent loss for parent
                 else: # If child, compute loss with average parent embedding as stored in self.embedding_matrix
                     parent_indices = self.child_to_parent_map[multiclass_label]
                     avg_parent_embeds = tf.reduce_mean(self.embedding_matrix[parent_indices], axis=0)
@@ -121,12 +125,10 @@ class Losses():
                     self.embedding_matrix[parents_no_indiv] = child_weight * self.embedding_matrix[parents_no_indiv] + \
                                                               (1 - child_weight) * features[i]
                     
-                    losses.append(tf.reduce_mean(tf.math.square(avg_parent_embeds - features[i]), axis=1)) # squared loss
-
+                    losses[i] = tf.reduce_mean(tf.math.square(avg_parent_embeds - features[i])) # squared loss
+            
             losses = tf.convert_to_tensor(losses)
-            return losses
-        else:
-            return tf.zeros(self.batch_size)
+        return tf.zeros(self.batch_size)
 
         
     def supcon_full_loss(self):
