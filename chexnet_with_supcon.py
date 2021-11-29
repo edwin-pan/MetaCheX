@@ -70,7 +70,7 @@ if __name__ == '__main__':
     # Compile
     compile()
     
-    checkpoint_path="training_progress_supcon/cp_best.ckpt"
+    checkpoint_path=args.ckpt_save_path
     checkpoint_dir = os.path.dirname(checkpoint_path)
     # Get weights
     if args.pretrained is None:
@@ -90,7 +90,6 @@ if __name__ == '__main__':
     nn.calculate_prototypes(full=False, max_per_class=2) ## realistically, change to larger number (20)
     
     print(f'prototypes shape: {nn.prototypes.shape}')
-#     print(nn.prototypes.T)
     
     if args.evaluate:
         print("[INFO] Evaluating performance")
@@ -110,15 +109,14 @@ if __name__ == '__main__':
         
 
         ## Metrics
-        auroc = mean_auroc(y_test_labels, y_pred, dataset, eval=True, dir_path=checkpoint_dir)
-        mean_AP = average_precision(y_test_labels, y_pred, dataset, dir_path=checkpoint_dir)
+        auroc = mean_auroc(y_test_labels, y_pred, dataset, eval=True, dir_path=record_dir)
+        mean_AP = average_precision(y_test_labels, y_pred, dataset, dir_path=record_dir)
         
 
     # Generate tSNE
     if args.tsne:
         print("[INFO] Generating tSNE plots")
 #        tsne_dataset = MetaChexDataset(shuffle_train=False)
-
         embedding_save_path = os.path.join(record_dir, 'embeddings.npy')
         sampled_ds_save_path = os.path.join(record_dir, 'sampled_ds.pkl')
         tsne_save_path = os.path.join(record_dir, 'tsne.png')
@@ -139,7 +137,7 @@ if __name__ == '__main__':
             training_embeddings = np.load(embedding_save_path)
         else:
             print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
-            training_embeddings = chexnet_embedder.predict(sampled_ds, verbose=1)
+            training_embeddings = chexnet_encoder.predict(sampled_ds, verbose=1)
             np.save(embedding_save_path, training_embeddings)
         
         tsne_feats = process_tSNE(training_embeddings)

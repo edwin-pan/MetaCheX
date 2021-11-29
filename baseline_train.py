@@ -31,7 +31,7 @@ def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                     save_weights_only=True,
                                                     verbose=1,
-                                                    monitor='val_mean_auroc',
+                                                    monitor='val_mean_auroc_baseline',
                                                     mode='max',
                                                     save_best_only=True)
 
@@ -110,6 +110,7 @@ if __name__ == '__main__':
         
         dir_path = os.path.dirname(eval_path)
         mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
+        mean_auroc_baseline(y_test_true, y_test_pred)
         average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
 
     # Generate tSNE
