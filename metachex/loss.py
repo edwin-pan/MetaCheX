@@ -56,7 +56,6 @@ class Losses():
         self.num_classes = num_classes
         self.num_samples_per_class = num_samples_per_class
         self.num_query = num_query
-        self.meta_test = meta_test
         
         
     def weighted_binary_crossentropy(self):
