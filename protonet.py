@@ -136,7 +136,7 @@ if __name__ == '__main__':
             print(f"[INFO] Train ds sampled. Saving to {sampled_ds_save_path}")
             sampled_ds = get_sampled_ds(dataset.train_ds, multiclass=True, max_per_class=20)
             with open(sampled_ds_save_path, 'wb') as file:
-                pickle.dump(sampled_ds_save_path, file)
+                pickle.dump(sampled_ds, file)
                 
             print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
             training_embeddings = chexnet_encoder.predict(sampled_ds, verbose=1)

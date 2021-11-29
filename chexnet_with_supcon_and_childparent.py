@@ -128,7 +128,16 @@ if __name__ == '__main__':
     if args.evaluate:
         print("[INFO] Evaluating performance")
         y_test_labels = dataset.test_ds.get_y_true()
-        y_test_embeddings = chexnet_encoder.predict(dataset.test_ds, verbose=1)
+        
+        y_test_embed_file = os.path.join(record_dir, 'y_test_embed.pkl')
+        if os.path.exists(y_test_embed_file):
+            with open(y_test_embed_file, 'rb') as file:
+                y_test_embeddings = pickle.load(file)
+        else:
+            y_test_embeddings = chexnet_encoder.predict(dataset.test_ds, verbose=1)
+            with open(y_test_embed_file, 'wb') as file:
+                pickle.dump(y_test_embeddings, file)
+        
         y_pred = nn.get_soft_predictions(y_test_embeddings)
         
         ## metrics
@@ -143,6 +152,7 @@ if __name__ == '__main__':
 
         embedding_save_path = os.path.join(record_dir, 'embeddings.npy')
         sampled_ds_save_path = os.path.join(record_dir, 'sampled_ds.pkl')
+        tsne_save_path = os.path.join(record_dir, 'tsne.png')
         # generating embeddings can take some time. Load if possible
         if os.path.isfile(embedding_save_path) and os.path.isfile(sampled_ds_save_path):
             print(f"[INFO] Embeddings already processed. Loading from {embedding_save_path}")
@@ -156,7 +166,7 @@ if __name__ == '__main__':
             print(f"[INFO] Train ds sampled. Saving to {sampled_ds_save_path}")
             sampled_ds = get_sampled_ds(dataset.train_ds, multiclass=True, max_per_class=20)
             with open(sampled_ds_save_path, 'wb') as file:
-                pickle.dump(sampled_ds_save_path, file)
+                pickle.dump(sampled_ds, file)
                 
             print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
             training_embeddings = chexnet_encoder.predict(sampled_ds, verbose=1)
@@ -165,7 +175,7 @@ if __name__ == '__main__':
         tsne_feats = process_tSNE(training_embeddings)
         tsne_labels = sampled_ds.get_y_true()
 
-        plot_tsne(tsne_feats, tsne_labels, label_names=dataset.unique_labels)
+        plot_tsne(tsne_feats, tsne_labels, label_names=dataset.unique_labels, save_path=tsne_save_path)
 
     
     

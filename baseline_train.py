@@ -120,6 +120,7 @@ if __name__ == '__main__':
 
         embedding_save_path = os.path.join(record_dir, 'embeddings.npy')
         sampled_ds_save_path = os.path.join(record_dir, 'sampled_ds.pkl')
+        tsne_save_path = os.path.join(record_dir, 'tsne.png')
         # generating embeddings can take some time. Load if possible
         if os.path.isfile(embedding_save_path) and os.path.isfile(sampled_ds_save_path):
             print(f"[INFO] Embeddings already processed. Loading from {embedding_save_path}")
@@ -133,7 +134,7 @@ if __name__ == '__main__':
             print(f"[INFO] Train ds sampled. Saving to {sampled_ds_save_path}")
             sampled_ds = get_sampled_ds(dataset.train_ds, multiclass=False, max_per_class=20)
             with open(sampled_ds_save_path, 'wb') as file:
-                pickle.dump(sampled_ds_save_path, file)
+                pickle.dump(sampled_ds, file)
             
             print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
             training_embeddings = chexnet_embedder.predict(sampled_ds, verbose=1)
@@ -142,4 +143,4 @@ if __name__ == '__main__':
         tsne_feats = process_tSNE(training_embeddings)
         tsne_labels = sampled_ds.get_y_true()
 
-        plot_tsne(tsne_feats, tsne_labels, label_names=dataset.unique_labels)
+        plot_tsne(tsne_feats, tsne_labels, label_names=dataset.unique_labels, save_path=tsne_save_path)

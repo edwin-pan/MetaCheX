@@ -177,7 +177,7 @@ def average_precision(y_true, y_pred, dataset, dir_path="."):
             try:
                 ap = average_precision_score(y_true[:, i], y_pred[:, i])
                 aps.append(ap)
-            except RuntimeError:
+            except RuntimeWarning:
                 ap = 'N/A'
             f.write(f"{dataset.unique_labels[i]}: {ap}\n")
         mean_ap = np.mean(aps)
