@@ -12,6 +12,7 @@ from sklearn import manifold
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, average_precision_score
 from metachex.configs.config import *
 from sklearn.metrics.pairwise import euclidean_distances
+from metachex.image_sequence import ImageSequence
 
 colormap =  lambda x, N: np.array(matplotlib.cm.get_cmap('viridis')(x/N))
 
@@ -57,14 +58,13 @@ def get_embedding_model(model):
 
 def get_sampled_ds(ds, multiclass=True, max_per_class=20):
     
+    num_classes = ds.num_classes
     if multiclass:
-        num_classes = ds.num_classes_multiclass
         sampled_df = get_sampled_df_multiclass(ds.df, num_classes=num_classes, max_per_class=max_per_class)
     else:
-        num_classes = ds.num_classes_multitask
         sampled_df = get_sampled_df_multitask(ds.df, num_classes=num_classes, max_per_class=max_per_class)
     
-    sampled_ds = ImageSequence(df, shuffle_on_epoch_end=False, num_classes=num_classes, multiclass=multiclass)
+    sampled_ds = ImageSequence(sampled_df, shuffle_on_epoch_end=False, num_classes=num_classes, multiclass=multiclass)
     
     return sampled_ds
 

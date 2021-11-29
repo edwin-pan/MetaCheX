@@ -4,6 +4,7 @@ import tensorflow as tf
 from metachex.image_sequence import ImageSequence
 from sklearn.metrics.pairwise import euclidean_distances
 from metachex.utils import get_sampled_df_multiclass
+import os
 
 class NearestNeighbour():
     
@@ -37,7 +38,13 @@ class NearestNeighbour():
         """
         Note: this takes a long time if run full ds -- we can also sample max_per_class images per class
         """
-        
+       
+        save_path = os.path.join(dir_path, "prototypes.npy")
+        if os.path.exists(save_path):
+            self.prototypes = np.load(save_path)
+            return self.prototypes
+       
+
         if full:
             df = self.dataset.train_ds.df
         else:

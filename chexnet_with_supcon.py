@@ -85,6 +85,7 @@ if __name__ == '__main__':
         record_dir = os.path.dirname(args.pretrained)
             
     # Evaluate
+    print("[INFO] Calculating prototypes")
     nn = NearestNeighbour(model=chexnet_encoder, dataset=dataset)
     nn.calculate_prototypes(full=False, max_per_class=2) ## realistically, change to larger number (20)
     

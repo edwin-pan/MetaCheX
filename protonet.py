@@ -49,7 +49,6 @@ def train(num_epochs=15, checkpoint_path="training_progress_protonet/cp_best.ckp
     return hist
 
 
-
 def compile():
    loss_fn = Losses(num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
 
@@ -59,6 +58,16 @@ def compile():
                            run_eagerly=True)
 
 
+def eval():
+    loss_fn = Losses(num_classes=dataset.n_test, num_samples_per_class=dataset.k_test, num_query=dataset.n_query_test)
+    chexnet_encoder.compile(loss=loss_fn.proto_loss(),
+                            metrics=[proto_acc],
+                            run_eagerly=True)
+
+    chexnet_encoder.evaluate(dataset.test_ds, steps=dataset.num_meta_test_episodes)
+
+
+    test_embeds = chexnet_encoder.predict(dataset.test_ds)
 def load_model():
     chexnet_encoder = load_chexnet(1) ## any number will do, since we get rid of final dense layer
     chexnet_encoder = get_embedding_model(chexnet_encoder)
@@ -100,12 +109,13 @@ if __name__ == '__main__':
     # Evaluate
     if args.evaluate:
         print("[INFO] Evaluating performance")
-        y_test_true = dataset.test_ds.get_y_true() 
-        y_test_pred = chexnet_encoder.predict(dataset.test_ds, verbose=1)
+        #y_test_true = dataset.test_ds.get_y_true() 
+        #y_test_embeddings = chexnet_encoder.predict(dataset.test_ds, verbose=1)
+        #y_pred = nn.get_soft_predictions(y_test_embeddings)
         
-        dir_path = os.path.dirname(args.ckpt_save_path)
-        mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
-        average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
+        #dir_path = os.path.dirname(args.ckpt_save_path)
+        #mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
+        #average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
 
     # Generate tSNE
     if args.tsne:
