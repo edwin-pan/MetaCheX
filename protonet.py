@@ -85,7 +85,8 @@ if __name__ == '__main__':
     # Instantiate dataset
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=3, k=5, n_query=5, 
                               n_test=3, k_test=5, n_query_test=5)
-
+    eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
+    
     # Load CheXNet
     chexnet_encoder = load_model()
     
@@ -111,13 +112,13 @@ if __name__ == '__main__':
         print("[INFO] Evaluating performance")
         eval() ## protoloss, proto_acc, proto_mean_auroc
         
-#         y_test_true = dataset.test_ds.get_y_true() 
-#         y_test_embeddings = chexnet_encoder.predict(dataset.test_ds, verbose=1)
-#         y_pred = nn.get_soft_predictions(y_test_embeddings)
+        y_test_true = eval_dataset.test_ds.get_y_true() 
+        y_test_embeddings = chexnet_encoder.predict(eval_dataset.test_ds, verbose=1)
+        y_pred = nn.get_soft_predictions(y_test_embeddings)
         
-#         dir_path = os.path.dirname(args.ckpt_save_path)
-#         mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
-#         average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
+        dir_path = os.path.dirname(args.ckpt_save_path)
+        mean_auroc(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
+        average_precision(y_test_true, y_test_pred, eval_dataset, dir_path=dir_path)
 
     # Generate tSNE
     if args.tsne:
@@ -133,7 +134,7 @@ if __name__ == '__main__':
                 sampled_ds = pickle.load(file)
         else:
             print(f"[INFO] Train ds sampling. Saving to {sampled_ds_save_path}")
-            sampled_ds = get_sampled_ds(dataset.train_ds, multiclass=False, max_per_class=20)
+            sampled_ds = get_sampled_ds(eval_dataset.train_ds, multiclass=False, max_per_class=20)
             with open(sampled_ds_save_path, 'wb') as file:
                 pickle.dump(sampled_ds, file)
                 
@@ -148,4 +149,4 @@ if __name__ == '__main__':
         tsne_feats = process_tSNE(training_embeddings)
         tsne_labels = sampled_ds.get_y_true()
 
-        plot_tsne(tsne_feats, tsne_labels, label_names=dataset.unique_labels)
+        plot_tsne(tsne_feats, tsne_labels, label_names=eval_dataset.unique_labels)

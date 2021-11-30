@@ -24,13 +24,27 @@ def parse_args():
     parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
     return parser.parse_args()
 
-def compile_stage(stage_num=1):
+def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weight=1.):
+    """
+    stage_num: 1 = supcon; 2 = childparent; 3 = protoloss
+    """
     if stage_num == 1:
-        loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size)
+        loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
+                        stage_num=1)
 
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-                                loss=loss_fn.supcon_label_loss(),
+                                loss=loss_fn.supcon_full_loss(),
                                 run_eagerly=True)
+    elif stage_num == 2:
+        loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, 
+                         embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
+                         stage_num=2, parent_weight=parent_weight, child_weight=child_weight, stage2_weight=stage2_weight,
+                         protonet=True)
+        
+        chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+                                loss=loss_fn.supcon_full_loss(),
+                                run_eagerly=True)
+        
     else:
         loss_fn = Losses(num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
 
@@ -43,12 +57,8 @@ def compile_stage(stage_num=1):
 def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_supcon_childparent"):
     # Create a callback that saves the model's weights
     ds = dataset.train_ds
-    if stage_num == 1:
-        checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best.ckpt")
-        hist_dict_name = 'trainStage1HistoryDict'
-    else:
-        checkpoint_path = os.path.join(checkpoint_dir, "stage2_cp_best.ckpt")
-        hist_dict_name = 'trainStage2HistoryDict'
+    checkpoint_path = os.path.join(checkpoint_dir, f"stage{stage_num}_cp_best.ckpt")
+    hist_dict_name = f'trainStage{stage_num}HistoryDict'
         
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                         save_weights_only=True,
@@ -94,8 +104,9 @@ if __name__ == '__main__':
     # Instantiate dataset
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=3, k=5, n_query=5, 
                               n_test=3, k_test=5, n_query_test=5)
-    eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
 
+    eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
+    
     # Load CheXNet
     chexnet_encoder = load_model()
     
@@ -112,10 +123,19 @@ if __name__ == '__main__':
         print("[INFO] Stage 1 Training")
         stage1_hist = train_stage(num_epochs=args.num_epochs_stage_1, stage_num=1)
         
+        # Create embedding matrix for parents
+        embed_matrix = create_parent_embed_matrix(model=chexnet_encoder, dataset=dataset, max_num_samples_per_class=2) # change #
+        
         # Compile stage 2
         print("[INFO] Stage 2 Training")
-        compile_stage(stage_num=2)
+        compile_stage(stage_num=2, parent_weight=args.parent_weight, child_weight=args.child_weight,
+                      stage2_weight=args.stage2_weight)
         stage2_hist = train_stage(num_epochs=args.num_epochs_stage_2, stage_num=2)
+        
+        # Compile stage 3
+        print("[INFO] Stage 3 Training")
+        compile_stage(stage_num=3)
+        stage3_hist = train_stage(num_epochs=args.num_epochs_stage_3, stage_num=3)
         
         record_dir = os.path.dirname(args.ckpt_save_path)
     else:
@@ -151,7 +171,7 @@ if __name__ == '__main__':
                 sampled_ds = pickle.load(file)
         else:
             print(f"[INFO] Train ds sampling. Saving to {sampled_ds_save_path}")
-            sampled_ds = get_sampled_ds(eval_dataset.train_ds, multiclass=False, max_per_class=20)
+            sampled_ds = get_sampled_ds(dataset.train_ds, multiclass=False, max_per_class=20)
             with open(sampled_ds_save_path, 'wb') as file:
                 pickle.dump(sampled_ds, file)
                 
@@ -166,4 +186,4 @@ if __name__ == '__main__':
         tsne_feats = process_tSNE(training_embeddings)
         tsne_labels = sampled_ds.get_y_true()
 
-        plot_tsne(tsne_feats, tsne_labels, label_names=eval_dataset.unique_labels)
+        plot_tsne(tsne_feats, tsne_labels, label_names=dataset.unique_labels)

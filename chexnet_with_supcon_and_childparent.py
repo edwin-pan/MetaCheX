@@ -42,13 +42,9 @@ def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weigh
 def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_supcon_childparent"):
     # Create a callback that saves the model's weights
     ds = dataset.train_ds
-    if stage_num == 1:
-        checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best.ckpt")
-        hist_dict_name = 'trainStage1HistoryDict'
-    else:
-        checkpoint_path = os.path.join(checkpoint_dir, "stage2_cp_best.ckpt")
-        hist_dict_name = 'trainStage2HistoryDict'
-        
+    checkpoint_path = os.path.join(checkpoint_dir, f"stage{stage_num}_cp_best.ckpt")
+    hist_dict_name = f'trainStage{stage_num}HistoryDict'
+
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                         save_weights_only=True,
                                                         verbose=1)
@@ -99,7 +95,6 @@ if __name__ == '__main__':
     # Compile stage 1
     compile_stage(stage_num=1)
     
-    checkpoint_dir = os.path.dirname(args.ckpt_save_path)
     # Get weights
     if args.pretrained is None:
         print("[INFO] Beginning Fine Tuning")
@@ -117,7 +112,7 @@ if __name__ == '__main__':
                       stage2_weight=args.stage2_weight)
         stage2_hist = train_stage(num_epochs=args.num_epochs_stage_2, stage_num=2)
         
-        record_dir = checkpoint_dir
+        record_dir = os.path.dirname(args.ckpt_save_path)
     else:
         print("[INFO] Loading weights")
         # Load weights

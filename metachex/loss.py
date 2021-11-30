@@ -150,16 +150,15 @@ class Losses():
     def proto_loss(self):
         def proto_loss_inner(labels, features):
             """
-            labels: [n * k + n_query, n] 
+            labels: [n + n_query, n] 
             features: [n * k + n_query, 128]
             """
-            support_labels = labels[:self.num_classes * self.num_samples_per_class]
-            support_labels = support_labels.reshape((self.num_classes, self.num_samples_per_class, -1))
+            support_labels = labels[:self.num_classes]
             support_features = features[:num_classes * num_samples_per_class]
             support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
             
             prototypes = tf.reduce_mean(support_features, axis=1)
-            prototype_labels = tf.reduce_mean(support_labels, axis=1)
+            prototype_labels = support_labels
             
             queries = features[-self.num_query:]
             query_labels = labels[-self.num_query:]
