@@ -44,10 +44,10 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_su
     ds = dataset.train_ds
     if stage_num == 1:
         checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best.ckpt")
-#         ds = dataset.stage1_ds
+        hist_dict_name = 'trainStage1HistoryDict'
     else:
         checkpoint_path = os.path.join(checkpoint_dir, "stage2_cp_best.ckpt")
-#         ds = dataset.train_ds
+        hist_dict_name = 'trainStage2HistoryDict'
         
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                         save_weights_only=True,
@@ -60,7 +60,7 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_su
         callbacks=[cp_callback]
         )
 
-    with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
+    with open(os.path.join(checkpoint_dir, hist_dict_name), 'wb') as file_pi:
             pickle.dump(hist.history, file_pi)
 
     return hist     
