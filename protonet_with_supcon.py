@@ -24,38 +24,47 @@ def parse_args():
     parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
     return parser.parse_args()
 
+def compile_stage(stage_num=1):
+    if stage_num == 1:
+        loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size)
 
-def train(num_epochs=15, checkpoint_path="training_progress_protonet/cp_best.ckpt"):
-    checkpoint_dir = os.path.dirname(checkpoint_path)
+        chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+                                loss=loss_fn.supcon_label_loss(),
+                                run_eagerly=True)
+    else:
+        loss_fn = Losses(num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
+
+        chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+                                loss=loss_fn.proto_loss(),
+                                metrics=[proto_acc],
+                                run_eagerly=True)
+                  
+
+def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_supcon_childparent"):
     # Create a callback that saves the model's weights
+    ds = dataset.train_ds
+    if stage_num == 1:
+        checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best.ckpt")
+        hist_dict_name = 'trainStage1HistoryDict'
+    else:
+        checkpoint_path = os.path.join(checkpoint_dir, "stage2_cp_best.ckpt")
+        hist_dict_name = 'trainStage2HistoryDict'
+        
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
-                                                    save_weights_only=True,
-                                                    verbose=1,
-                                                    monitor='val_loss',
-                                                    mode='min',
-                                                    save_best_only=True)
+                                                        save_weights_only=True,
+                                                        verbose=1)
+    
+    hist = chexnet_encoder.fit(ds,
+        epochs=num_epochs,
+        steps_per_epoch=dataset.train_steps_per_epoch, 
+        batch_size=dataset.batch_size, 
+        callbacks=[cp_callback]
+        )
 
-    hist = chexnet.fit(dataset.train_ds,
-                validation_data=dataset.val_ds,
-                epochs=num_epochs,
-                steps_per_epoch=dataset.num_meta_train_episodes, 
-                validation_steps=1, 
-                callbacks=[cp_callback]
-                )
-
-    with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
+    with open(os.path.join(checkpoint_dir, hist_dict_name), 'wb') as file_pi:
             pickle.dump(hist.history, file_pi)
 
-    return hist
-
-
-def compile():
-    loss_fn = Losses(num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
-
-    chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-                           loss=loss_fn.proto_loss(),
-                           metrics=[proto_acc],
-                           run_eagerly=True)
+    return hist   
 
 
 def eval():
@@ -92,14 +101,22 @@ if __name__ == '__main__':
     print(chexnet_encoder.summary())
     
     # Compile
-    compile()
+    compile_stage(stage_num=1)
 
     # Get weights
     if args.pretrained is None:
         print("[INFO] Beginning Fine Tuning")
-        # Train
-        hist = train(args.num_epochs, args.ckpt_save_path)
-        record_dir = os.path.dirname(args.ckpt_save_path)
+        
+        # Train stage 1
+        print("[INFO] Stage 1 Training")
+        stage1_hist = train_stage(num_epochs=args.num_epochs_stage_1, stage_num=1)
+        
+        # Compile stage 2
+        print("[INFO] Stage 2 Training")
+        compile_stage(stage_num=2)
+        stage2_hist = train_stage(num_epochs=args.num_epochs_stage_2, stage_num=2)
+        
+        record_dir = checkpoint_dir
     else:
         print("[INFO] Loading weights")
         # Load weights
@@ -118,7 +135,7 @@ if __name__ == '__main__':
 #         dir_path = os.path.dirname(args.ckpt_save_path)
 #         mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
 #         average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
-
+    
     # Generate tSNE
     if args.tsne:
         print("[INFO] Generating tSNE plots")

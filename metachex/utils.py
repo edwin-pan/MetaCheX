@@ -147,7 +147,7 @@ def mean_auroc_baseline(y_true, y_pred):
 
     return mean_auroc
 
-def mean_auroc(y_true, y_pred, dataset, eval=False, dir_path='.'):
+def mean_auroc(y_true, y_pred, dataset=None, eval=False, dir_path='.'):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
     aurocs = []
     test_auroc_log_path = os.path.join(dir_path, "auroc.txt")
@@ -209,6 +209,27 @@ def proto_acc():
         total_num = labels.shape[0]
         acc = num_correct / total_num
         return acc
+    
+    return proto_acc_inner
+
+def proto_mean_auroc():
+    def proto_mean_auroc(labels, features):
+        support_labels = labels[:self.num_classes * self.num_samples_per_class]
+        support_labels = support_labels.reshape((self.num_classes, self.num_samples_per_class, -1))
+        support_features = features[:num_classes * num_samples_per_class]
+        support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
+            
+        prototypes = tf.reduce_mean(support_features, axis=1)
+        prototype_labels = tf.reduce_mean(support_labels, axis=1)
+            
+        queries = features[-self.num_query:]
+        query_labels = labels[-self.num_query:]
+        
+        query_preds = get_distances(prototypes, queries)
+        
+        return mean_auroc(queries, query_preds)
+    
+    return proto_mean_auroc
 
 
 def get_nearest_neighbour(prototypes, queries):
