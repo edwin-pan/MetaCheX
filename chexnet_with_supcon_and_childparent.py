@@ -99,7 +99,7 @@ if __name__ == '__main__':
     # Compile stage 1
     compile_stage(stage_num=1)
     
-    checkpoint_dir=args.ckpt_save_path
+    checkpoint_dir = os.path.dirname(args.ckpt_save_path)
     # Get weights
     if args.pretrained is None:
         print("[INFO] Beginning Fine Tuning")
@@ -135,16 +135,20 @@ if __name__ == '__main__':
         
         y_test_embed_file = os.path.join(record_dir, 'y_test_embed.pkl')
         if os.path.exists(y_test_embed_file):
+            print("[INFO] Loading y_test_embeddings")
             with open(y_test_embed_file, 'rb') as file:
                 y_test_embeddings = pickle.load(file)
         else:
+            print("[INFO] Generating y_test_embeddings")
             y_test_embeddings = chexnet_encoder.predict(dataset.test_ds, verbose=1)
             with open(y_test_embed_file, 'wb') as file:
                 pickle.dump(y_test_embeddings, file)
         
+        print("[INFO] Calculating soft predictions")
         y_pred = nn.get_soft_predictions(y_test_embeddings)
         
         ## metrics
+        print("[INFO] Calculating metrics")
         auroc = mean_auroc(y_test_labels, y_pred, dataset, eval=True, dir_path=record_dir)
         mean_AP = average_precision(y_test_labels, y_pred, dataset, dir_path=record_dir)
         
