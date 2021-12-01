@@ -14,7 +14,6 @@ def supcon_label_loss_inner(labels, features):
     loss.shape (batch_size, )
     """
     features = tf.expand_dims(features, axis=1)
-    
     loss = contrastive_loss(features, labels)
     return loss
 
@@ -26,7 +25,7 @@ class Losses():
                  embed_dim=128,
                  parent_multiclass_labels_path=os.path.join(PATH_TO_DATA_FOLDER, 'parent_multiclass_labels.npy'),
                  stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weight=1.,
-                 num_classes=3, num_samples_per_class=5, num_query=5):
+                 num_classes=5, num_samples_per_class=3, num_query=5):
         """
         child_to_parent_map: mapping of multiclass labels to a list of their parents
                 format: {child multiclass label (int) : list[parent multitask indices (int)]}
@@ -82,13 +81,35 @@ class Losses():
         return weighted_loss
     
     
-    def supcon_label_loss(self):
+    def supcon_label_loss_proto(self, labels, features):
+        support_labels = labels[:self.num_classes, 0]
+        support_labels = np.repeat(support_labels, self.num_samples_per_class)
+        query_labels = labels[-self.num_query:, 0]
+        labels = np.concatenate((support_labels, query_labels))
+
+        labels = np.eye(self.num_classes)[labels]
+
+        return supcon_label_loss_inner(labels, features)
+    
+    
+    def supcon_class_loss_proto(self, labels, features):
+        supcon_class_loss_proto(labels[:, 1], features, proto=True)
+        
+        support_labels = labels[:self.num_classes, 1]
+        support_labels = np.repeat(support_labels, self.num_samples_per_class)
+        query_labels = labels[-self.num_query:, 1]
+        labels = np.concatenate((support_labels, query_labels))
+
+        return self.class_contrastive_loss(labels, features, proto=True)
+
+    
+    def supcon_label_loss(self, proto=False):
         """
         features (ie the z's): [batch_size, embedding_dim]
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
         """
         
-        return supcon_label_loss_inner
+        return self.supcon_label_loss_proto if proto else supcon_label_loss_inner
     
     
     def class_contrastive_loss(self, labels, features, proto=False):
@@ -153,9 +174,8 @@ class Losses():
             labels: [n + n_query, 2]; proto-labels: labels[:, 0]; multiclass_labels: labels[:, 1]
             features: [n * k + n_query, 128]
             """
-            proto_labels_one_hot = np.eye(self.num_classes)[np.array(labels[:, 0])]
-            return supcon_label_loss_inner(proto_labels_one_hot, features) \
-                     + supcon_class_loss_inner(labels[:, 1], features, proto=True)
+            
+            return self.supcon_label_loss_proto + self.supcon_class_loss_proto
 
         
         return proto_supcon_full_loss_inner if proto else supcon_full_loss_inner

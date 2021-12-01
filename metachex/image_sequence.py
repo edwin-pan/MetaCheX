@@ -138,7 +138,7 @@ class ProtoNetImageSequence(ImageSequence):
 #         batch_labels = np.concatenate(batch_y, batch_multiclass_labels, axis=1)
         
         
-        print(f"shapes: {batch_x.shape}, {batch_y.shape}")
+#         print(f"shapes: {batch_x.shape}, {batch_y.shape}")
         return batch_x, batch_y
     
     def prepare_dataset(self):
