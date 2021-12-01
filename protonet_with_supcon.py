@@ -94,9 +94,10 @@ if __name__ == '__main__':
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     # Instantiate dataset
-    dataset = MetaChexDataset(protonet=True, batch_size=1, n=5, k=3, n_query=5, 
+    dataset = MetaChexDataset(multiclass=True, protonet=True, batch_size=1, n=5, k=3, n_query=5, 
                               n_test=5, k_test=3, n_test_query=5,
-                              num_meta_train_episodes=100, num_meta_test_episodes=100)
+                              num_meta_train_episodes=100, num_meta_test_episodes=100,
+                              )
     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
 
     # Load CheXNet

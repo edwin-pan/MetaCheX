@@ -49,7 +49,7 @@ class MetaChexDataset():
 #         print("Generated labels: ", len(list(self.unique_labels_dict.keys())))
         self.df_condensed = self.generate_labels(self.df_condensed, 'data_condensed.pkl')
         
-        if multiclass:
+        if multiclass or protonet:
             print("[INFO] get child-to-parents mapping")
             ## list of multiclass labels corresponding to multitask index
             self.parent_multiclass_labels = np.ones((self.num_classes_multitask + 1,)) * -1  ## +1 for 'No Finding' label

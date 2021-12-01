@@ -14,6 +14,7 @@ from metachex.configs.config import *
 from metachex.dataloader import MetaChexDataset
 from metachex.loss import Losses
 from metachex.utils import *
+from chexnet_with_supcon_and_childparent import create_parent_embed_matrix
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
@@ -23,8 +24,10 @@ def parse_args():
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
     parser.add_argument('-n1', '--num_epochs_stage_1', type=int, default=15, help='Number of epochs to train stage 1 for')
     parser.add_argument('-n2', '--num_epochs_stage_2', type=int, default=15, help='Number of epochs to train stage 2 for')
+    parser.add_argument('-n3', '--num_epochs_stage_3', type=int, default=15, help='Number of epochs to train stage 3 for')
     parser.add_argument('-wp', '--parent_weight', type=int, default=0.5, help='Weight for modifying existing parent embedding')
     parser.add_argument('-wc', '--child_weight', type=int, default=0.2, help='Weight for modifying non-existent parent')
+    parser.add_argument('-w2', '--stage2_weight', type=int, default=1., help='Weight for childParent regularizer')
     return parser.parse_args()
 
 def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weight=1.):
@@ -36,17 +39,16 @@ def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weigh
                         stage_num=1, num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
 
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-                                loss=loss_fn.supcon_full_loss(),
+                                loss=loss_fn.supcon_full_loss(proto=True),
                                 run_eagerly=True)
     elif stage_num == 2:
         loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, 
                          embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
                          stage_num=2, parent_weight=parent_weight, child_weight=child_weight, stage2_weight=stage2_weight,
-                         num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query,
-                         protonet=True)
+                         num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
         
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
-                                loss=loss_fn.supcon_full_loss(),
+                                loss=loss_fn.supcon_full_loss(proto=True),
                                 run_eagerly=True)
         
     else:
@@ -106,7 +108,7 @@ if __name__ == '__main__':
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     # Instantiate dataset
-    dataset = MetaChexDataset(protonet=True, batch_size=1, n=5, k=3, n_query=5, 
+    dataset = MetaChexDataset(protonet=True, multiclass=True, batch_size=1, n=5, k=3, n_query=5, 
                               n_test=5, k_test=3, n_test_query=5,
                               num_meta_train_episodes=100, num_meta_test_episodes=100)
 

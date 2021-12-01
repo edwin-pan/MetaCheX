@@ -212,6 +212,7 @@ def proto_acc():
     
     return proto_acc_inner
 
+
 def proto_mean_auroc():
     def proto_mean_auroc(labels, features):
         support_labels = labels[:self.num_classes * self.num_samples_per_class]

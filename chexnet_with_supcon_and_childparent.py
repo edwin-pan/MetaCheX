@@ -60,8 +60,8 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_su
             pickle.dump(hist.history, file_pi)
 
     return hist     
-        
-     
+
+
 def create_parent_embed_matrix(model, dataset, max_num_samples_per_class=20, parent_emb_path="training_progress/parent_emb.npy"):
     
     nn = NearestNeighbour(model=model, dataset=dataset, parents_only=True)

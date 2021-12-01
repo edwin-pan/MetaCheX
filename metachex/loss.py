@@ -90,18 +90,7 @@ class Losses():
         labels = np.eye(self.num_classes)[labels]
 
         return supcon_label_loss_inner(labels, features)
-    
-    
-    def supcon_class_loss_proto(self, labels, features):
-        supcon_class_loss_proto(labels[:, 1], features, proto=True)
-        
-        support_labels = labels[:self.num_classes, 1]
-        support_labels = np.repeat(support_labels, self.num_samples_per_class)
-        query_labels = labels[-self.num_query:, 1]
-        labels = np.concatenate((support_labels, query_labels))
-
-        return self.class_contrastive_loss(labels, features, proto=True)
-
+   
     
     def supcon_label_loss(self, proto=False):
         """
@@ -111,6 +100,16 @@ class Losses():
         
         return self.supcon_label_loss_proto if proto else supcon_label_loss_inner
     
+    
+    def supcon_class_loss_proto(self, labels, features):
+        
+        support_labels = labels[:self.num_classes, 1]
+        support_labels = np.repeat(support_labels, self.num_samples_per_class)
+        query_labels = labels[-self.num_query:, 1]
+        labels = np.concatenate((support_labels, query_labels))
+
+        return self.class_contrastive_loss(labels, features, proto=True)
+
     
     def class_contrastive_loss(self, labels, features, proto=False):
         """
@@ -175,7 +174,7 @@ class Losses():
             features: [n * k + n_query, 128]
             """
             
-            return self.supcon_label_loss_proto + self.supcon_class_loss_proto
+            return self.supcon_label_loss_proto(labels, features) + self.supcon_class_loss_proto(labels, features)
 
         
         return proto_supcon_full_loss_inner if proto else supcon_full_loss_inner
