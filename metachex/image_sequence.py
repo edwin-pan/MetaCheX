@@ -99,7 +99,7 @@ class ImageSequence(Sequence):
 class ProtoNetImageSequence(ImageSequence):
     
     def __init__(self, df, num_classes, num_samples_per_class, num_queries,
-                 batch_size=8, target_size=(224, 224), verbose=0, steps=None, shuffle_on_epoch_end=True, 
+                 batch_size=1, target_size=(224, 224), verbose=0, steps=None, shuffle_on_epoch_end=True, 
                  random_state=271):
         
         self.df = df
@@ -127,7 +127,7 @@ class ProtoNetImageSequence(ImageSequence):
         batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
         batch_x = np.concatenate((batch_x, batch_q), axis=0)
         
-        batch_y = self.label_batches[idx] ## categorical
+        batch_y = self.label_batches[idx].reshape(-1, 2) ## categorical
 #         batch_y = np.eye(self.num_classes)[self.label_batches[idx]]  
         batch_q_label = self.query_label_batches[idx] ## categorical
 #         batch_q_label = np.eye(self.num_classes)[self.query_label_batches[idx]]
@@ -180,7 +180,8 @@ class ProtoNetImageSequence(ImageSequence):
 #                 multiclass_label_batch.append(multiclass_label)
                 
 #                 label_batch.append(j)
-                label_batch.append([j, multiclass_label]) ## j is the shuffled label in meta-train task
+                label_batch.append([[j, multiclass_label]] * self.num_samples_per_class)
+#                 label_batch.append([j, multiclass_label]) ## j is the shuffled label in meta-train task
             
             ## Sample queries
             sampled_query_df = query_df.sample(n=self.num_queries, random_state=self.random_state)
@@ -203,11 +204,11 @@ class ProtoNetImageSequence(ImageSequence):
 #             all_multiclass_label_batches.append(multiclass_label_batch)
                 
         self.path_batches = np.stack(all_path_batches)  ## (batch_size, num_classes, num_samples_per_class)
-        self.label_batches = np.stack(all_label_batches) ## (batch_size, num_classes) 
+        self.label_batches = np.stack(all_label_batches) ## current (batch_size, num_classes, num_samples_per_class, 2) before (batch_size, num_classes, 2) 
 #         self.multiclass_label_batches = np.stack(all_multiclass_label_batches) # (batch_size, num_classes)
         
         self.query_path_batches = np.stack(all_query_path_batches) ## (batch_size, num_query)
-        self.query_label_batches = np.stack(all_query_label_batches) ## (batch_size, num_classes) 
+        self.query_label_batches = np.stack(all_query_label_batches) ## (batch_size, num_classes, 2) 
         
         print(f'self.path_batches.shape: {self.path_batches.shape}')
         print(f'self.label_batches.shape: {self.label_batches.shape}')

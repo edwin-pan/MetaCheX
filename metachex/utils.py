@@ -149,6 +149,8 @@ def mean_auroc_baseline(y_true, y_pred):
 
 def mean_auroc(y_true, y_pred, dataset=None, eval=False, dir_path='.'):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
+    print(f'y_true: {y_true}')
+    print(f'y_pred: {y_pred}')
     aurocs = []
     test_auroc_log_path = os.path.join(dir_path, "auroc.txt")
     with open(test_auroc_log_path, "w") as f:
@@ -185,55 +187,59 @@ def average_precision(y_true, y_pred, dataset, dir_path="."):
         f.write(f"mean average precision: {mean_ap}\n")
 
 
-def proto_acc():
-    def proto_acc_inner(labels, features):
+def proto_acc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_acc(labels, features):
         """
-        labels: [n * k + n_query, n] 
+        labels: [n * k + n_query, 2] 
         features: [n * k + n_query, 128]
         """
-        support_labels = labels[:self.num_classes * self.num_samples_per_class]
-        support_labels = support_labels.reshape((self.num_classes, self.num_samples_per_class, -1))
+        support_labels = labels[:num_classes * num_samples_per_class, 0]
+        support_labels = support_labels.reshape((num_classes, num_samples_per_class))
         support_features = features[:num_classes * num_samples_per_class]
-        support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
+        support_features = support_features.reshape((num_classes, num_samples_per_class, -1))
             
         prototypes = tf.reduce_mean(support_features, axis=1)
         prototype_labels = tf.reduce_mean(support_labels, axis=1)
             
-        queries = features[-self.num_query:]
-        query_labels = labels[-self.num_query:]
-        query_labels_cat = np.where(query_labels == 1)[1] ## get categorical labels
+        queries = features[-num_query:]
+        query_labels = labels[-num_query:, 0]
+#         query_labels_cat = np.where(query_labels == 1)[1] ## get categorical labels
             
-        query_preds = get_nearest_neighbour(prototypes, queries)
+        query_preds = get_nearest_neighbour(queries, prototypes)
            
-        num_correct = np.where(query_preds == query_labels_cat)[0].shape[0]
+        num_correct = np.where(query_preds == query_labels)[0].shape[0]
         total_num = labels.shape[0]
         acc = num_correct / total_num
         return acc
     
-    return proto_acc_inner
+    return proto_acc
 
 
-def proto_mean_auroc():
+def proto_mean_auroc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
     def proto_mean_auroc(labels, features):
-        support_labels = labels[:self.num_classes * self.num_samples_per_class]
-        support_labels = support_labels.reshape((self.num_classes, self.num_samples_per_class, -1))
+        support_labels = labels[:num_classes * num_samples_per_class, 0]
+        support_labels = support_labels.reshape((num_classes, num_samples_per_class))
         support_features = features[:num_classes * num_samples_per_class]
-        support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
+        support_features = support_features.reshape((num_classes, num_samples_per_class, -1))
             
         prototypes = tf.reduce_mean(support_features, axis=1)
         prototype_labels = tf.reduce_mean(support_labels, axis=1)
             
-        queries = features[-self.num_query:]
-        query_labels = labels[-self.num_query:]
+        queries = features[-num_query:]
+        query_labels = labels[-num_query:, 0]
+#         query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
         
-        query_preds = get_distances(prototypes, queries)
+        query_distances = get_distances(queries, prototypes)
+        query_preds = tf.nn.softmax(query_distances)
+        print(f'query_labels: {query_labels}')
+        print(f'query_preds: {query_preds}')
         
-        return mean_auroc(queries, query_preds)
+        return roc_auc_score(y_true=query_labels, y_score=query_preds, multi_class='ovr')
     
     return proto_mean_auroc
 
 
-def get_nearest_neighbour(prototypes, queries):
+def get_nearest_neighbour(queries, prototypes):
     """
     queries: [batch_size, embedding_dim]
     prototypes: [num_classes, embedding_dim]
@@ -242,15 +248,16 @@ def get_nearest_neighbour(prototypes, queries):
     categorical preds: (batch_size, )
     """
 
-    distances = euclidean_distances(queries, prototypes)
+    distances = get_distances(queries, prototypes)
     pred = np.argmin(distances, axis=1)
     
     return pred ## (batch_size,) (categorical)
     #return np.eye(prototypes.shape[0])[pred] ## one-hot
 
 
-def get_distances(prototypes, queries):
-    distances = np.linalg.norm(queries[:, None, :] - prototypes[None, :, :], axis=-1)
+def get_distances(queries, prototypes):
+#     distances = np.linalg.norm(queries[:, None, :] - prototypes[None, :, :], axis=-1)
+    distances = tf.norm(queries[:, None, :] - prototypes[None, :, :], axis=-1)
     
 #     distances = euclidean_distances(queries, prototypes)
     

@@ -54,15 +54,25 @@ def compile():
 
     chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                            loss=loss_fn.proto_loss(),
-                           metrics=[proto_acc],
+                           metrics=[proto_acc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query),
+                                   proto_mean_auroc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query)],
                            run_eagerly=True)
 
 
 def eval():
     loss_fn = Losses(num_classes=dataset.n_test, num_samples_per_class=dataset.k_test, num_query=dataset.n_query_test)
     chexnet_encoder.compile(loss=loss_fn.proto_loss(),
-                            metrics=[proto_acc, proto_mean_auroc],
-                            run_eagerly=True)
+                            metrics=[proto_acc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query), 
+                                     proto_mean_auroc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query)],
+                            run_eagerly=True) 
 
     chexnet_encoder.evaluate(dataset.test_ds, steps=dataset.num_meta_test_episodes)
 
