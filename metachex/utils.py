@@ -249,7 +249,9 @@ def get_nearest_neighbour(prototypes, queries):
 
 
 def get_distances(prototypes, queries):
-    distances = euclidean_distances(queries, prototypes)
+    distances = np.linalg.norm(queries[:, None, :] - prototypes[None, :, :], axis=-1)
+    
+#     distances = euclidean_distances(queries, prototypes)
     
     return distances
 

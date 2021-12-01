@@ -89,12 +89,13 @@ class Losses():
         """
         
         return supcon_label_loss_inner
-
-
-    def class_contrastive_loss(self, labels, features):
+    
+    
+    def class_contrastive_loss(self, labels, features, proto=False):
         """
+        proto: True iff in protonet framework 
         features (ie the z's): [batch_size, embedding_dim]
-        labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
+        labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded iff proto=False; otherwise cat
         Assumes self.embedding_matrix is a 28x128 matrix of embedding vectors, where the ith
         column vector is the embedding of parent with label i.
         
@@ -105,7 +106,10 @@ class Losses():
         child_weight = self.child_weight
         if self.stage_num == 2:
             # For each example in labels, find index where example[index] == 1
-            class_labels = np.where(labels == 1)[1]
+            if proto:
+                class_labels = labels
+            else:
+                class_labels = np.where(labels == 1)[1]
             for i, multiclass_label in enumerate(class_labels):
                 ## Note: will never encounter parents that do not exist individually (because not in dataset)
                 if multiclass_label in self.parent_multiclass_labels: # Parent label (multiclass) and 'no finding' label
@@ -131,7 +135,7 @@ class Losses():
         return tf.zeros(self.batch_size)
 
         
-    def supcon_full_loss(self):
+    def supcon_full_loss(self, proto=False):
         """
         features (ie the z's): [batch_size, embedding_dim]
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
@@ -143,30 +147,47 @@ class Losses():
 
         def supcon_full_loss_inner(labels, features):
             return supcon_label_loss_inner(labels, features) + supcon_class_loss_inner(labels, features)
+        
+        def proto_supcon_full_loss_inner(labels, features):
+            """
+            labels: [n + n_query, 2]; proto-labels: labels[:, 0]; multiclass_labels: labels[:, 1]
+            features: [n * k + n_query, 128]
+            """
+            proto_labels_one_hot = np.eye(self.num_classes)[np.array(labels[:, 0])]
+            return supcon_label_loss_inner(proto_labels_one_hot, features) \
+                     + supcon_class_loss_inner(labels[:, 1], features, proto=True)
 
-        return supcon_full_loss_inner
+        
+        return proto_supcon_full_loss_inner if proto else supcon_full_loss_inner
     
     
     def proto_loss(self):
         def proto_loss_inner(labels, features):
             """
-            labels: [n + n_query, n] 
+            labels: [n + n_query, 2]; proto-labels: labels[:, 0]; multiclass_labels: labels[:, 1]
             features: [n * k + n_query, 128]
             """
-            support_labels = labels[:self.num_classes]
-            support_features = features[:num_classes * num_samples_per_class]
+            support_labels = labels[:self.num_classes, 0]
+            support_features = features[:self.num_classes * self.num_samples_per_class]
             support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
             
             prototypes = tf.reduce_mean(support_features, axis=1)
             prototype_labels = support_labels
             
             queries = features[-self.num_query:]
-            query_labels = labels[-self.num_query:]
+            query_labels = labels[-self.num_query:, 0]
+#             query_labels = np.eye(self.num_classes)[np.array(labels[-self.num_query:, 0])]
             
             query_distances = get_distances(prototypes, queries)
+            print(query_distances.shape)
             
-            loss = tf.nn.softmax_cross_entropy_with_logits(logits=-1 * query_distances,
-                                                                          labels=tf.stop_gradient(query_labels))
+            ## loss.shape: (n, )
+            loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=-1 * get_distances(prototypes, queries),
+                                                                          labels=tf.stop_gradient(query_labels)))
+            
+            ## extend to (n + n_query, )
+#             loss = tf.ones(self.num_classes + self.num_query) * loss
+            print(f'loss: {loss}')
             return loss
         
         return proto_loss_inner

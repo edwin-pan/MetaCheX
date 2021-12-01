@@ -22,7 +22,7 @@ np.random.seed(271)
 
 class MetaChexDataset():
     def __init__(self, shuffle_train=True, multiclass=False, protonet=False, batch_size=8, 
-                 n=3, k=5, n_query=5, n_test=3, k_test=5, n_test_query=5,
+                 n=5, k=3, n_query=5, n_test=5, k_test=3, n_test_query=5,
                  num_meta_train_episodes=100, num_meta_test_episodes=1000):
         self.batch_size = batch_size
         self.multiclass = multiclass
@@ -66,14 +66,14 @@ class MetaChexDataset():
          ## already shuffled and batched
         print("[INFO] shuffle & batch")
         if protonet:
+            self.num_meta_train_episodes = num_meta_train_episodes
+            self.num_meta_test_episodes = num_meta_test_episodes
             [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits(self.df_condensed, 
                                                                                             n, k, n_query, n_test, k_test,
                                                                                             n_test_query,
                                                                                             shuffle_train=shuffle_train)
             self.n, self.k, self.n_query = n, k, n_query
             self.n_test, self.k_test, self.n_test_query = n_test, k_test, n_test_query
-            self.num_meta_train_episodes = num_meta_train_episodes
-            self.num_meta_test_episodes = num_meta_test_episodes
         elif multiclass:
             [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
 #             self.stage1_ds = self.get_supcon_stage1_ds()
@@ -96,7 +96,7 @@ class MetaChexDataset():
         val_num = int(self.num_classes_multiclass * split[1])
         
         unique_label_strs = df['label_str'].drop_duplicates().values
-        unique_label_strs = np.random.shuffle(unique_label_strs)
+        np.random.shuffle(unique_label_strs)
         
         train_label_strs = unique_label_strs[:train_num]
         val_label_strs = unique_label_strs[train_num : train_num + val_num]
@@ -106,7 +106,7 @@ class MetaChexDataset():
         
         ds_types = ['train', 'val', 'test']
         
-        dfs = [df[df['label_str'] in lst] for lst in label_strs]
+        dfs = [df[df['label_str'].isin(lst)].reset_index(drop=True) for lst in label_strs]
         
         datasets = []
         for i, ds_type in enumerate(ds_types):
@@ -116,7 +116,7 @@ class MetaChexDataset():
                 shuffle_on_epoch_end = True
                 steps = self.num_meta_train_episodes 
             elif ds_type == 'test':
-                num_classes, num_samples_per_class, num_queries = n_test, k_test, n_query_test
+                num_classes, num_samples_per_class, num_queries = n_test, k_test, n_test_query
                 steps = self.num_meta_test_episodes 
             else: # val
                 steps = 1 
@@ -125,6 +125,9 @@ class MetaChexDataset():
                                        num_samples_per_class=num_samples_per_class, 
                                        num_queries=num_queries, batch_size=self.batch_size, 
                                        shuffle_on_epoch_end=shuffle_on_epoch_end)
+            
+            datasets.append(ds)
+        return datasets
     
         
     def get_num_parents_to_count_df(self):

@@ -21,7 +21,8 @@ def parse_args():
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
     parser.add_argument('-c', '--ckpt_save_path', default='training_progress/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
-    parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
+    parser.add_argument('-n1', '--num_epochs_stage_1', type=int, default=15, help='Number of epochs to train stage 1 for')
+    parser.add_argument('-n2', '--num_epochs_stage_2', type=int, default=15, help='Number of epochs to train stage 2 for')
     return parser.parse_args()
 
 def compile_stage(stage_num=1):
@@ -56,7 +57,7 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_su
     
     hist = chexnet_encoder.fit(ds,
         epochs=num_epochs,
-        steps_per_epoch=dataset.train_steps_per_epoch, 
+        steps_per_epoch=dataset.num_meta_train_episodes, 
         batch_size=dataset.batch_size, 
         callbacks=[cp_callback]
         )
@@ -93,7 +94,7 @@ if __name__ == '__main__':
 
     # Instantiate dataset
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=3, k=5, n_query=5, 
-                              n_test=3, k_test=5, n_query_test=5)
+                              n_test=3, k_test=5, n_test_query=5)
     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
 
     # Load CheXNet
