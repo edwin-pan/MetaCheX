@@ -149,8 +149,8 @@ def mean_auroc_baseline(y_true, y_pred):
 
 def mean_auroc(y_true, y_pred, dataset=None, eval=False, dir_path='.'):
     ## Note: roc_auc_score(y_true, y_pred, average='macro') #doesn't work for some reason -- didn't look into it too much
-    print(f'y_true: {y_true}')
-    print(f'y_pred: {y_pred}')
+#     print(f'y_true: {y_true}')
+#     print(f'y_pred: {y_pred}')
     aurocs = []
     test_auroc_log_path = os.path.join(dir_path, "auroc.txt")
     with open(test_auroc_log_path, "w") as f:
@@ -159,6 +159,7 @@ def mean_auroc(y_true, y_pred, dataset=None, eval=False, dir_path='.'):
                 score = roc_auc_score(y_true[:, i], y_pred[:, i])
                 aurocs.append(score)
             except ValueError:
+                print(f'index: {i}')
                 score = 0
             if eval:
                 f.write(f"{dataset.unique_labels[i]}: {score}\n")
@@ -227,14 +228,16 @@ def proto_mean_auroc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
             
         queries = features[-num_query:]
         query_labels = labels[-num_query:, 0]
-#         query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
+        query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
         
         query_distances = get_distances(queries, prototypes)
         query_preds = tf.nn.softmax(query_distances)
-        print(f'query_labels: {query_labels}')
-        print(f'query_preds: {query_preds}')
+#         print(f'query_labels: {query_labels}')
+#         print(f'query_preds: {query_preds}')
         
-        return roc_auc_score(y_true=query_labels, y_score=query_preds, multi_class='ovr')
+        return mean_auroc(y_true=query_labels_one_hot, y_pred=query_preds)
+#         return roc_auc_score(y_true=query_labels, y_score=query_preds, 
+#                              multi_class='ovr', labels=np.arange(num_classes))
     
     return proto_mean_auroc
 

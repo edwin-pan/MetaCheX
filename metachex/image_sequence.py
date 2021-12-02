@@ -142,7 +142,9 @@ class ProtoNetImageSequence(ImageSequence):
         return batch_x, batch_y
     
     def prepare_dataset(self):
-        
+        """
+        Try to divide n_query among all classes as evenly as possible
+        """
         all_path_batches, all_label_batches = [], []
         all_query_path_batches, all_query_label_batches = [], []
         
@@ -156,21 +158,34 @@ class ProtoNetImageSequence(ImageSequence):
             truncated_df = self.df[self.df['label_str'].isin(sampled_classes)]
             
             ## for each of the num_classes, sample num_samples_per_class samples per class
-            query_df = pd.DataFrame(columns=['label_str', 'image_path', 'label_num_multi']) 
+            sampled_query_df = pd.DataFrame(columns=['label_str', 'image_path', 'label_num_multi']) 
+            extra_query_df = pd.DataFrame(columns=['label_str', 'image_path', 'label_num_multi']) 
             
             path_batch = []
             label_batch = []
             multiclass_label_batch = []
+            total_queries = 0
             for j, classname in enumerate(sampled_classes):
                 df_class = truncated_df[truncated_df['label_str'] == classname]
 #                 print(f"{classname} num_samples: {len(df_class)}")
-                df_class_sampled = df_class.sample(n=self.num_samples_per_class, random_state=self.random_state)
+                df_class_sampled = df_class.sample(n=self.num_samples_per_class)
                 
                 df_class_query = pd.concat([df_class[['label_str', 'image_path', 'label_num_multi']], 
                                             df_class_sampled[['label_str', 'image_path', 'label_num_multi']]]
                                           ).drop_duplicates(keep=False) 
                 df_class_query['label'] = j
-                query_df = query_df.append(df_class_query)
+                
+                ## Sample queries
+                query_sample_num = min(self.num_queries - total_queries, 
+                                       min(len(df_class_query), 
+                                           max(1, self.num_queries // self.num_classes)))
+                total_queries += query_sample_num
+                sampled_query_df = sampled_query_df.append(df_class_query.sample(n=query_sample_num))
+                
+                ## All the extra possible queries that were not sampled
+                extra_query_df = pd.concat([df_class_query[['label_str', 'image_path', 'label_num_multi']],
+                                            sampled_query_df[['label_str', 'image_path', 'label_num_multi']]]
+                                          ).drop_duplicates(keep=False)
 #                 print(f"{classname} query_df.shape: {query_df.shape}")
                 
                 path_batch.append(df_class_sampled['image_path'].values)
@@ -184,7 +199,12 @@ class ProtoNetImageSequence(ImageSequence):
 #                 label_batch.append([j, multiclass_label]) ## j is the shuffled label in meta-train task
             
             ## Sample queries
-            sampled_query_df = query_df.sample(n=self.num_queries, random_state=self.random_state)
+#             sampled_query_df = query_df.sample(n=self.num_queries, random_state=self.random_state)
+#             sampled_query_df = query_df.reset_index(drop=True)
+            
+            other_sampled_query_df = extra_query_df.sample(n=max(0, self.num_queries-total_queries))
+            sampled_query_df = sampled_query_df.append(other_sampled_query_df).reset_index(drop=True)
+            
             query_path_batch = sampled_query_df['image_path'].to_numpy()
             query_label_batch = sampled_query_df['label'].to_numpy().astype(int) ## categorical
             query_multiclass_label_batch = sampled_query_df['label_num_multi'].to_numpy().astype(int) ## multiclass labels
