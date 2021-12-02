@@ -21,7 +21,7 @@ from metachex.image_sequence import ImageSequence, ProtoNetImageSequence
 np.random.seed(271)
 
 class MetaChexDataset():
-    def __init__(self, shuffle_train=True, multiclass=False, protonet=False, batch_size=8, 
+    def __init__(self, shuffle_train=True, multiclass=False, baseline=False, protonet=False, batch_size=8, 
                  n=5, k=3, n_query=5, n_test=5, k_test=3, n_test_query=5,
                  num_meta_train_episodes=100, num_meta_test_episodes=1000):
         self.batch_size = batch_size
@@ -54,13 +54,7 @@ class MetaChexDataset():
             ## list of multiclass labels corresponding to multitask index
             self.parent_multiclass_labels = np.ones((self.num_classes_multitask + 1,)) * -1  ## +1 for 'No Finding' label
             self.get_child_to_parent_mapping()
-#             print(f"child_to_parent_map.keys(): {self.child_to_parent_map.keys()}")
-#             print(f"len(child_to_parent_map.keys(): {len(self.child_to_parent_map.keys())}")
-#             print(f"parent_multiclass_labels: {self.parent_multiclass_labels}")
-#             print(f"indiv parents: {self.parent_multiclass_labels[np.where(self.parent_multiclass_labels != -1)[0]]}")
-#             exit(1)
             self.get_num_parents_to_count_df()
-#             self.num_classes_multiclass_plus = np.max(self.parent_multiclass_labels)
 
         print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
@@ -75,8 +69,13 @@ class MetaChexDataset():
             self.n, self.k, self.n_query = n, k, n_query
             self.n_test, self.k_test, self.n_test_query = n_test, k_test, n_test_query
         elif multiclass:
-            [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, shuffle_train=shuffle_train)
-#             self.stage1_ds = self.get_supcon_stage1_ds()
+            if not baseline:
+                [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, 
+                                                                                     shuffle_train=shuffle_train)
+            else:
+                [self.train_ds, self.val_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed,
+                                                                                                  shuffle_train=shuffle_train,
+                                                                                                  baseline=baseline)
         else:
             [self.train_ds, self.val_ds, self.test_ds] = self.get_multitask_generator_splits(self.df_condensed, 
                                                                                              shuffle_train=shuffle_train)
@@ -272,11 +271,12 @@ class MetaChexDataset():
         return unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums
     
     
-    def get_multiclass_generator_splits(self, df, split=(0.8, 0.2), shuffle_train=True):
-        """Splitting with tensorflow sequence instead of dataset"""
+    def get_multiclass_generator_splits(self, df, split=(0.8, 0.2), shuffle_train=True, baseline=False):
+        """
+        Splitting with tensorflow sequence instead of dataset
         
-#         print(df[df['label_num_multi'] == 322]['label_str'])
-#         exit(1)
+        Note: split is a 2-length tuple iff baseline == False; otherwise, 3-length
+        """
         
         ## Deal with NIH datasplit first
         nih_dataframes = []
@@ -284,8 +284,13 @@ class MetaChexDataset():
         
         df_nih_train = df[df['dataset'] == 'train']
         df_nih_val = df[df['dataset'] == 'val']
-        nih_df_sizes.append(len(df_nih_train) + len(df_nih_val))
-        nih_dataframes.append(df_nih_train.append(df_nih_val).reset_index(drop=True))
+        
+        if not baseline:
+            nih_df_sizes.append(len(df_nih_train) + len(df_nih_val))
+            nih_dataframes.append(df_nih_train.append(df_nih_val).reset_index(drop=True))
+        else:
+            nih_df_sizes.extend([len(df_nih_train), len(df_nih_val)])
+            nih_dataframes.extend([df_nih_train, df_nih_val])
         
         df_nih_test = df[df['dataset'] == 'test']
         nih_df_sizes.append(len(df_nih_test))
@@ -298,7 +303,10 @@ class MetaChexDataset():
         df_other = df[df['dataset'].isna()]
         df_other = sklearn.utils.shuffle(df_other) # shuffle
         
-        df_other_splits = [pd.DataFrame(columns=df.columns)] * 2
+        if not baseline:
+            df_other_splits = [pd.DataFrame(columns=df.columns)] * 2
+        else:
+            df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
         
         image_paths, multiclass_labels = df_other['image_path'].values, df_other['label_num_multi'].values
         
@@ -308,39 +316,46 @@ class MetaChexDataset():
             
             df_subsplit = df_other.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
             
-#             if len(df_subsplit) > 0:
-#                 print(i)
-            
-            test_idx = int(len(df_subsplit) * split[0])
-            df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(test_idx))
-            df_other_splits[1] = df_other_splits[1].append(df_subsplit[test_idx:])
-        
-#         df_combined = nih_dataframes[0].append(df_other_splits[0])
-#         untrained_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
-#         print(f'classes not trained on: {untrained_classes}')
-        
-#         df_combined = nih_dataframes[1].append(df_other_splits[1])
-#         untested_classes = set(range(multiclass_labels.max() + 1)) - set(df_combined['label_num_multi'].values)
-#         print(f'classes not tested on: {untested_classes}, num: {len(untested_classes)}')
-#         exit(1)
+            if not baseline:
+                test_idx = int(len(df_subsplit) * split[0])
+                df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(test_idx))
+                df_other_splits[1] = df_other_splits[1].append(df_subsplit[test_idx:])
+            else:
+                val_idx = int(len(df_subsplit) * split[0])
+                test_idx = val_idx + int(len(df_subsplit) * split[1])
+                df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(val_idx))
+                df_other_splits[1] = df_other_splits[1].append(df_subsplit[val_idx:test_idx])
+                df_other_splits[2] = df_other_splits[2].append(df_subsplit[test_idx:])
         
         full_datasets = []
         
-        for i, ds_type in enumerate(['train', 'test']):
+        if not baseline:
+            ds_types = ['train', 'test']
+        else:
+            ds_types = ['train', 'val', 'test']
+        
+        for i, ds_type in enumerate(ds_types):
             
             df_combined = nih_dataframes[i].append(df_other_splits[i])
-            
             
             if ds_type == 'train':
                 shuffle_on_epoch_end = shuffle_train
                 factor = 0.1
-                steps = int(len(df_combined) / self.batch_size * factor)
-                self.train_steps_per_epoch = steps
-                
-                self.train_df = df_combined.reset_index(drop=True)
-            else:
-                steps = None
+            elif ds_type == 'val':
                 shuffle_on_epoch_end = False
+                factor = 0.2
+            else: ## test
+                shuffle_on_epoch_end = False
+                factor = 1
+            
+            steps = int(len(df_combined) / self.batch_size * factor)
+            
+            if ds_type == 'train':
+                self.train_steps_per_epoch = steps
+            elif ds_type == 'val':
+                self.val_steps_per_epoch = steps
+            else: ## test
+                steps += 1 if len(df_combined) > self.batch_size * factor else 0 ## add for extra incomplete batch
                 
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
             ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
@@ -425,7 +440,7 @@ class MetaChexDataset():
             elif ds_type == 'val':
                 self.val_steps_per_epoch = steps
             else: ## test
-                steps += 1 ## add for extra incomplete batch
+                steps += 1 if len(df_combined) > self.batch_size * factor else 0 ## add for extra incomplete batch
                 
             df_combined = sklearn.utils.shuffle(df_combined) # shuffle
             
@@ -592,27 +607,31 @@ class MetaChexDataset():
         if one_cap: # Restrains between 0 and 1
             indiv_weights = (combo['count'].sum() - indiv['count'])/combo['count'].sum()
             indiv_weights_false = indiv['count']/combo['count'].sum()
-            # indiv_prob_class = (indiv['count'])/indiv['count'].sum()
             combo_weights = (combo['count'].sum() - combo['count'])/combo['count'].sum()
+            combo_weights_false = combo['count']/combo['count'].sum()
         else: # Unconstrained
-            indiv_weights = (1 / indiv['count']) * (indiv['count'].sum() / indiv.shape[0]) # weight we want to apply if class is TRUE
-            indiv_weights_false = (1 / (indiv['count'].sum()-indiv['count'])) * (indiv['count'].sum() / indiv.shape[0]) # weight we want to apply if class is TRUE
+            # weight we want to apply if class is True
+            indiv_weights = (1 / indiv['count']) * (indiv['count'].sum() / indiv.shape[0]) 
+            # weight we want to apply if class is False
+            indiv_weights_false = (1 / (indiv['count'].sum()-indiv['count'])) * (indiv['count'].sum() / indiv.shape[0]) 
             combo_weights = (1 / combo['count']) * (combo['count'].sum() / combo.shape[0])
+            combo_weights_false = (1 / (combo['count'].sum()-combo['count'])) * (combo['count'].sum() / combo.shape[0]) 
         
         indiv_weights = indiv_weights.sort_index()
         indiv_weights = indiv_weights.drop(['No Finding'])
         indiv_weights_false = indiv_weights_false.sort_index()
         indiv_weights_false = indiv_weights_false.drop(['No Finding'])
         combo_weights = combo_weights.sort_index()
+        combo_weights_false = combo_weights_false.sort_index()
         
-        indiv_class_weights = dict(list(enumerate((indiv_weights.values, indiv_weights_false.values))))
-        combo_class_weights = dict(list(enumerate(combo_weights.values)))
+#         indiv_class_weights = dict(list(enumerate((indiv_weights.values, indiv_weights_false.values))))
+#         combo_class_weights = dict(list(enumerate((combo_weights.values, combo_weights_false.values))))
         
-        indiv_class_weights = {}
-        for i in range(len(indiv_weights)):
-            indiv_class_weights = {i: {0: indiv_weights.values[i], 1: indiv_weights_false.values[i]}}
+#         indiv_class_weights = {}
+#         for i in range(len(indiv_weights)):
+#             indiv_class_weights = {i: {0: indiv_weights.values[i], 1: indiv_weights_false.values[i]}}
         
-        return np.array([indiv_weights.values, indiv_weights_false.values]), indiv_class_weights, combo_class_weights
+        return np.array([indiv_weights.values, indiv_weights_false.values]), np.array([combo_weights.values, combo_weights_false.values])
     
 
 

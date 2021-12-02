@@ -19,13 +19,13 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
     parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
-    parser.add_argument('-c', '--ckpt_save_path', default='training_progress/cp_best.ckpt')
+    parser.add_argument('-c', '--ckpt_save_path', default='training_progress_baseline_multiclass/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
     parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
     return parser.parse_args()
 
 
-def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
+def train(num_epochs=15, checkpoint_path="training_progress_baseline_multiclass/cp_best.ckpt"):
     checkpoint_dir = os.path.dirname(checkpoint_path)
     # Create a callback that saves the model's weights
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
@@ -38,10 +38,9 @@ def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
     hist = chexnet.fit(dataset.train_ds,
                 validation_data=dataset.val_ds,
                 epochs=num_epochs,
-                steps_per_epoch=dataset.train_steps_per_epoch, ## size(train_ds) * 0.125 * 0.1
-                validation_steps=dataset.val_steps_per_epoch, ## size(val_ds) * 0.125 * 0.2
-                batch_size=dataset.batch_size, ## 8
-                # class_weight=class_weights,
+                steps_per_epoch=dataset.train_steps_per_epoch, 
+                validation_steps=dataset.val_steps_per_epoch,
+                batch_size=dataset.batch_size, 
                 callbacks=[cp_callback]
                 )
 
@@ -52,18 +51,14 @@ def train(num_epochs=15, checkpoint_path="training_progress/cp_best.ckpt"):
 
 
 def compile():
-    class_weights, _ = dataset.get_class_weights(one_cap=True)
+    _, class_weights = dataset.get_class_weights(one_cap=True)
 
     loss_fn = Losses(class_weights, batch_size=dataset.batch_size)
 
     chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
                     loss=loss_fn.weighted_binary_crossentropy(),
-    #                   loss_weights=1e5,
-    #                 loss='binary_crossentropy',
-                    #metrics=[tf.keras.metrics.AUC(multi_label=True),  
-                    metrics=[mean_auroc_baseline, #mean_precision, mean_recall, 'binary_accuracy', 'accuracy', 
+                    metrics=[mean_auroc_baseline, 
                             tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask)], 
-                    #        tf.keras.metrics.Precision(), tf.keras.metrics.Recall()],
                     run_eagerly=True)
 
 
@@ -75,13 +70,13 @@ if __name__ == '__main__':
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     # Instantiate dataset
-    dataset = MetaChexDataset(batch_size=32) ## note: this was changed from default 8
+    dataset = MetaChexDataset(multiclass=True, baseline=True, batch_size=32)
     
     # Grab training dataset
     train_ds = dataset.train_ds
 
     # Load CheXNet
-    chexnet = load_chexnet(dataset.num_classes_multitask)
+    chexnet = load_chexnet(dataset.num_classes_multiclass)
     chexnet.trainable = True
     
     print(chexnet.summary())
