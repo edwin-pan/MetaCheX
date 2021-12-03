@@ -10,6 +10,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from sklearn import manifold
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, average_precision_score
+from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay
+
 from metachex.configs.config import *
 from sklearn.metrics.pairwise import euclidean_distances
 from metachex.image_sequence import ImageSequence
@@ -172,13 +174,20 @@ def mean_auroc(y_true, y_pred, dataset=None, eval=False, dir_path='.'):
     return mean_auroc
 
 
-def average_precision(y_true, y_pred, dataset, dir_path="."):
+def average_precision(y_true, y_pred, dataset, dir_path=".", plot=True):
+    
     test_ap_log_path = os.path.join(dir_path, "average_prec.txt")
     with open(test_ap_log_path, "w") as f:
         aps = []
         for i in range(y_true.shape[1]):
             try:
                 ap = average_precision_score(y_true[:, i], y_pred[:, i])
+                if plot:
+                    precision, recall, _ = precision_recall_curve(y_true[:, i], y_pred[:, i])
+                    display = PrecisionRecallDisplay(recall=recall, precision=precision, average_precision=ap)
+                    display.plot()
+                    plt = display.figure_
+                    plt.savefig(os.path.join(dir_path, 'pr_plots', f"{dataset.unique_labels[i]}_pr_curve.png"))
                 aps.append(ap)
             except RuntimeWarning:
                 ap = 'N/A'

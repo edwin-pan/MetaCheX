@@ -95,6 +95,7 @@ class MetaChexDataset():
         val_num = int(self.num_classes_multiclass * split[1])
         
         unique_label_strs = df['label_str'].drop_duplicates().values
+        np.random_seed(271)
         np.random.shuffle(unique_label_strs)
         
         train_label_strs = unique_label_strs[:train_num]
@@ -301,7 +302,7 @@ class MetaChexDataset():
         ## Split the rest of the data relatively evenly according to the ratio per class
         ## That is, for each label, the first 80% goes to train, the next 10% to val, the final 10% to test
         df_other = df[df['dataset'].isna()]
-        df_other = sklearn.utils.shuffle(df_other) # shuffle
+        df_other = sklearn.utils.shuffle(df_other, random_state=271) # shuffle
         
         if not baseline:
             df_other_splits = [pd.DataFrame(columns=df.columns)] * 2
@@ -357,7 +358,7 @@ class MetaChexDataset():
             else: ## test
                 steps += 1 if len(df_combined) > self.batch_size * factor else 0 ## add for extra incomplete batch
                 
-            df_combined = sklearn.utils.shuffle(df_combined) # shuffle
+            df_combined = sklearn.utils.shuffle(df_combined, random_state=271) # shuffle
             ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
                                num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size)
             full_datasets.append(ds)
@@ -382,7 +383,7 @@ class MetaChexDataset():
         ## Split the rest of the data relatively evenly according to the ratio per class
         ## That is, for each label, the first 80% goes to train, the next 10% to val, the final 10% to test
         df_other = df[df['dataset'].isna()]
-        df_other = sklearn.utils.shuffle(df_other) # shuffle
+        df_other = sklearn.utils.shuffle(df_other, random_state=271) # shuffle
         
         df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
         
@@ -418,6 +419,27 @@ class MetaChexDataset():
         df_other_splits[1].drop_duplicates(subset='image_path', inplace=True)
         df_other_splits[2].drop_duplicates(subset='image_path', inplace=True)
         
+        df_combined = nih_dataframes[0].append(df_other_splits[0])
+        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
+        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
+        untrained_classes = np.where(df_multitask_labels_sum == 0)
+        print(df_multitask_labels_sum)
+        print(f'classes not trained on: {untrained_classes}')
+        
+        df_combined = nih_dataframes[1].append(df_other_splits[1])
+        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
+        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
+        unvalidated_classes = np.where(df_multitask_labels_sum == 0)
+        print(df_multitask_labels_sum)
+        print(f'classes not validated on: {unvalidated_classes}')
+        
+        df_combined = nih_dataframes[2].append(df_other_splits[2])
+        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
+        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
+        untested_classes = np.where(df_multitask_labels_sum == 0)
+        print(df_multitask_labels_sum)
+        print(f'classes not tested on: {untested_classes}')
+        
         full_datasets = []
         
         for i, ds_type in enumerate(['train', 'val', 'test']):
@@ -442,7 +464,7 @@ class MetaChexDataset():
             else: ## test
                 steps += 1 if len(df_combined) > self.batch_size * factor else 0 ## add for extra incomplete batch
                 
-            df_combined = sklearn.utils.shuffle(df_combined) # shuffle
+            df_combined = sklearn.utils.shuffle(df_combined, random_state=271) # shuffle
             
             ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
                                batch_size=self.batch_size, num_classes=self.num_classes_multitask)
