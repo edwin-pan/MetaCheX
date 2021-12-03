@@ -1,0 +1,16 @@
+label,count
+COVID-19,3616
+COVID-19|Pneumonia,563
+Influenza|Pneumonia,5
+Klebsiella|Pneumonia,10
+Legionella|Pneumonia,10
+Lung_Opacity,6012
+MERS-CoV|Pneumonia,10
+Mycoplasma|Pneumonia,11
+Nocardia|Pneumonia,8
+Pneumocystis|Pneumonia,30
+Pneumonia,1444
+Pneumonia|SARS,16
+Pneumonia|Streptococcus,22
+Pneumonia|Varicella,6
+Tuberculosis,18
