@@ -30,10 +30,14 @@ class MetaChexDataset():
         # Reads in data.pkl file (mapping of paths to unformatted labels)
         self.data_path = os.path.join(PATH_TO_DATA_FOLDER, 'data.pkl')
         
+        # Datasplit path
+        self.datasplit_path = os.path.join(PATH_TO_DATA_FOLDER, 'datasplit.pkl')
+        
         ## Child to parent map and num_parents_list path
         self.child_to_parent_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'childParent.pkl')
         self.num_parents_list_path = os.path.join(PATH_TO_DATA_FOLDER, 'num_parents_list.pkl')
         self.parent_multiclass_labels_path = os.path.join(PATH_TO_DATA_FOLDER, 'parent_multiclass_labels.npy')
+        
         
         # Pre-processing
         print("[INFO] pre-processing")
@@ -272,13 +276,23 @@ class MetaChexDataset():
         return unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums
     
     
-    def get_multiclass_generator_splits(self, df, split=(0.8, 0.2), shuffle_train=True, baseline=False):
+    def get_data_splits2(self, df, split=(0.7, 0.2, 0.1)):
         """
-        Splitting with tensorflow sequence instead of dataset
-        
-        Note: split is a 2-length tuple iff baseline == False; otherwise, 3-length
+        Splits according to multiclass label to the split percentages as best as possible
+        We first split according to pre-defined NIH splits (the ones used when pretraining CheXNet)
+        Then we split according to the percentages, the non-nih data per combo label
         """
         
+        # Load datasplit if it exists
+        if os.path.isfile(self.datasplit_path): 
+            with open(self.datasplit_path, 'rb') as file:
+                data_splits = pickle.load(file)
+        
+            return data_splits
+        
+        # Datasplit does not exist
+        
+        data_splits = []
         ## Deal with NIH datasplit first
         nih_dataframes = []
         nih_df_sizes = []
@@ -286,47 +300,92 @@ class MetaChexDataset():
         df_nih_train = df[df['dataset'] == 'train']
         df_nih_val = df[df['dataset'] == 'val']
         
-        if not baseline:
-            nih_df_sizes.append(len(df_nih_train) + len(df_nih_val))
-            nih_dataframes.append(df_nih_train.append(df_nih_val).reset_index(drop=True))
-        else:
-            nih_df_sizes.extend([len(df_nih_train), len(df_nih_val)])
-            nih_dataframes.extend([df_nih_train, df_nih_val])
+        nih_df_sizes.extend([len(df_nih_train), len(df_nih_val)])
+        nih_dataframes.extend([df_nih_train, df_nih_val])
         
         df_nih_test = df[df['dataset'] == 'test']
         nih_df_sizes.append(len(df_nih_test))
         nih_dataframes.append(df_nih_test)
         
+        nih_data_dict = {'label': [], 'count': []}
+        df_nih = df[~df['dataset'].isna()]
+        image_paths, multiclass_labels = df_nih['image_path'].values, df_nih['label_num_multi'].values
+        
+        for i in range(df['label_num_multi'].max() + 1):
+            rows_with_label = np.where(multiclass_labels == i)
+            images_with_label = image_paths[rows_with_label]
+            
+            df_subsplit = df_nih.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
+
+            if len(df_subsplit) > 0:
+                label = df_subsplit['label_str'].drop_duplicates().values[0]
+                nih_data_dict['label'].append(label)
+                nih_data_dict['count'].append(len(df_subsplit))
+        
+        nih_data_counts = pd.DataFrame.from_dict(nih_data_dict)
+        nih_data_counts.to_csv(os.path.join(PATH_TO_DATA_FOLDER, 'nih_data_counts.csv'), index=False)
+        print(f'nih_data_counts: \n {nih_data_counts}')
+        
+        
         # ## Non-nih data
         
         ## Split the rest of the data relatively evenly according to the ratio per class
-        ## That is, for each label, the first 80% goes to train, the next 10% to val, the final 10% to test
+        ## That is, for each label, the first 70% goes to train, the next 20% to val, the final 10% to test
         df_other = df[df['dataset'].isna()]
         df_other = sklearn.utils.shuffle(df_other, random_state=271) # shuffle
         
-        if not baseline:
-            df_other_splits = [pd.DataFrame(columns=df.columns)] * 2
-        else:
-            df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
+        df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
         
         image_paths, multiclass_labels = df_other['image_path'].values, df_other['label_num_multi'].values
+        
+        non_nih_data_dict = {'label': [], 'count': []}
         
         for i in range(df['label_num_multi'].max() + 1):
             rows_with_label = np.where(multiclass_labels == i)
             images_with_label = image_paths[rows_with_label]
             
             df_subsplit = df_other.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
+
+            if len(df_subsplit) > 0:
+                label = df_subsplit['label_str'].drop_duplicates().values[0]
+                non_nih_data_dict['label'].append(label)
+                non_nih_data_dict['count'].append(len(df_subsplit))
+                
+            val_idx = int(len(df_subsplit) * split[0])
+            test_idx = val_idx + int(len(df_subsplit) * split[1])
+            df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(val_idx))
+            df_other_splits[1] = df_other_splits[1].append(df_subsplit[val_idx:test_idx])
+            df_other_splits[2] = df_other_splits[2].append(df_subsplit[test_idx:])
+        
+        non_nih_data_counts = pd.DataFrame.from_dict(non_nih_data_dict)
+        non_nih_data_counts.to_csv(os.path.join(PATH_TO_DATA_FOLDER, 'non_nih_data_counts.csv'), index=False)
+        print(f'non_nih_data_counts: \n {non_nih_data_counts}')
+        
+        for i in range(3):
+            df_combined = nih_dataframes[i].append(df_other_splits[i])
+            data_splits.append(df_combined)
             
-            if not baseline:
-                test_idx = int(len(df_subsplit) * split[0])
-                df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(test_idx))
-                df_other_splits[1] = df_other_splits[1].append(df_subsplit[test_idx:])
-            else:
-                val_idx = int(len(df_subsplit) * split[0])
-                test_idx = val_idx + int(len(df_subsplit) * split[1])
-                df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(val_idx))
-                df_other_splits[1] = df_other_splits[1].append(df_subsplit[val_idx:test_idx])
-                df_other_splits[2] = df_other_splits[2].append(df_subsplit[test_idx:])
+        print([len(data_splits[i]) for i in range(len(data_splits))])
+        
+        ## Dump to pickle
+        with open(self.datasplit_path, 'wb') as file:
+            pickle.dump(data_splits, file, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        return data_splits
+
+    
+    
+    def get_multiclass_generator_splits(self, df, split=(0.7, 0.3), shuffle_train=True, baseline=False):
+        """
+        Splitting with tensorflow sequence instead of dataset
+        
+        Note: split is a 2-length tuple iff baseline == False; otherwise, 3-length
+        """
+        
+        data_splits = self.get_data_splits2(df, split=(split[0] // 2, split[0] - split[0] // 2, split[1])) ## (train, val, test)
+        
+        if not baseline: ## combine train and val
+            data_splits = [data_splits[0].append(data_splits[1]).reset_index(drop=True), data_splits[2]]
         
         full_datasets = []
         
@@ -334,10 +393,36 @@ class MetaChexDataset():
             ds_types = ['train', 'test']
         else:
             ds_types = ['train', 'val', 'test']
+            
+        # -------------------------------------------------
+        ## Getting information about the splits
+        df_combined = data_splits[0]
+        df_multiclass_labels = np.array(df_combined['label_num_multi'].to_list())
+        df_multiclass_labels = np.eye(self.num_classes_multiclass)[np.array(df_multiclass_labels)]
+        df_multiclass_labels_sum = np.sum(df_multiclass_labels, axis=0)
+        untrained_classes = np.where(df_multiclass_labels_sum == 0)
+        print(f'{untrained_classes[0].shape[0]} classes not trained on: {untrained_classes}')
+
+        df_combined = data_splits[1]
+        df_multiclass_labels = np.array(df_combined['label_num_multi'].to_list())
+        df_multiclass_labels = np.eye(self.num_classes_multiclass)[np.array(df_multiclass_labels)]
+        df_multiclass_labels_sum = np.sum(df_multiclass_labels, axis=0)
+        unvalidated_classes = np.where(df_multiclass_labels_sum == 0)
+        
+        if baseline:
+            print(f'{unvalidated_classes[0].shape[0]} classes not validated on: {unvalidated_classes}')
+
+            df_combined = data_splits[2]
+            df_multiclass_labels = np.array(df_combined['label_num_multi'].to_list())
+            df_multiclass_labels = np.eye(self.num_classes_multiclass)[np.array(df_multiclass_labels)]
+            df_multiclass_labels_sum = np.sum(df_multiclass_labels, axis=0)
+            untested_classes = np.where(df_multiclass_labels_sum == 0)
+            print(f'{untested_classes[0].shape[0]} classes not tested on: {untested_classes}')
+        else:
+            print(f'{unvalidated_classes[0].shape[0]} classes not tested on: {unvalidated_classes}')
+        # -------------------------------------------------
         
         for i, ds_type in enumerate(ds_types):
-            
-            df_combined = nih_dataframes[i].append(df_other_splits[i])
             
             if ds_type == 'train':
                 shuffle_on_epoch_end = shuffle_train
@@ -358,93 +443,40 @@ class MetaChexDataset():
             else: ## test
                 steps += 1 if len(df_combined) > self.batch_size * factor else 0 ## add for extra incomplete batch
                 
-            df_combined = sklearn.utils.shuffle(df_combined, random_state=271) # shuffle
-            ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
+            ds = ImageSequence(df=data_splits[i], steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
                                num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size)
             full_datasets.append(ds)
         
         return full_datasets
     
     
-    def get_multitask_generator_splits(self, df, split=(0.8, 0.1, 0.1), shuffle_train=True):
-        """Splitting with tensorflow sequence instead of dataset"""
+    def get_multitask_generator_splits(self, df, split=(0.7, 0.2, 0.1), shuffle_train=True):
         
-        ## Deal with NIH datasplit first
-        nih_dataframes = []
-        nih_df_sizes = []
+        data_splits = self.get_data_splits2(df, split)
         
-        for ds_type in ['train', 'val', 'test']:
-            df_nih = df[df['dataset'] == ds_type]
-            nih_df_sizes.append(len(df_nih))
-            nih_dataframes.append(df_nih)
-        
-        # ## Non-nih data
-        
-        ## Split the rest of the data relatively evenly according to the ratio per class
-        ## That is, for each label, the first 80% goes to train, the next 10% to val, the final 10% to test
-        df_other = df[df['dataset'].isna()]
-        df_other = sklearn.utils.shuffle(df_other, random_state=271) # shuffle
-        
-        df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
-        
-        image_paths, multitask_labels = df_other['image_path'].values, np.array(df_other['label_multitask'].to_list())
-        
-        for i in range(multitask_labels.shape[1]):
-            rows_with_label = multitask_labels[:, i] == 1
-            images_with_label = image_paths[rows_with_label]
-            
-            df_subsplit = df_other.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
-            
-            val_idx = int(len(df_subsplit) * split[0])
-            test_idx = int(len(df_subsplit) * (split[0] + split[1]))
-            df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(val_idx))
-            df_other_splits[1] = df_other_splits[1].append(df_subsplit[val_idx:test_idx])
-            df_other_splits[2] = df_other_splits[2].append(df_subsplit[test_idx:])
-        
-        df_other_train_val_same = df_other_splits[1].loc[df_other_splits[1]['image_path'].isin(df_other_splits[0]['image_path'])].copy()
-        df_other_train_test_same = df_other_splits[2].loc[df_other_splits[2]['image_path'].isin(df_other_splits[0]['image_path'])].copy()
-        df_other_val_test_same = df_other_splits[2].loc[df_other_splits[2]['image_path'].isin(df_other_splits[1]['image_path'])].copy()
-#         print('train/val overlap: ', len(df_other_train_val_same))
-#         print('train/test overlap; ', len(df_other_train_test_same))
-#         print('val/test overlap; ', len(df_other_val_test_same))
-        
-        ## remove train/test and val/test overlaps on train and val sets (keep in the test set -- ensures all labels tested on)
-        df_other_splits[0] = df_other_splits[0].loc[~df_other_splits[0]['image_path'].isin(df_other_train_test_same['image_path'])]
-        df_other_splits[1] = df_other_splits[1].loc[~df_other_splits[1]['image_path'].isin(df_other_val_test_same['image_path'])]
-        
-        ## remove train/val overlap on the val set 
-        df_other_splits[1] = df_other_splits[1].loc[~df_other_splits[1]['image_path'].isin(df_other_train_val_same['image_path'])]
-        
-        ## drop duplicates in val and test (duplicates ok in train -- oversampling-ish)
-        df_other_splits[1].drop_duplicates(subset='image_path', inplace=True)
-        df_other_splits[2].drop_duplicates(subset='image_path', inplace=True)
-        
-        df_combined = nih_dataframes[0].append(df_other_splits[0])
+        # -------------------------------------------------
+        df_combined = data_splits[0]
         df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
         df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
         untrained_classes = np.where(df_multitask_labels_sum == 0)
-        print(df_multitask_labels_sum)
-        print(f'classes not trained on: {untrained_classes}')
-        
-        df_combined = nih_dataframes[1].append(df_other_splits[1])
+        print(f'{untrained_classes[0].shape[0]} classes not trained on: {untrained_classes}')
+
+        df_combined = data_splits[1]
         df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
         df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
         unvalidated_classes = np.where(df_multitask_labels_sum == 0)
-        print(df_multitask_labels_sum)
-        print(f'classes not validated on: {unvalidated_classes}')
-        
-        df_combined = nih_dataframes[2].append(df_other_splits[2])
+        print(f'{unvalidated_classes[0].shape[0]} classes not validated on: {unvalidated_classes}')
+
+        df_combined = data_splits[2]
         df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
         df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
         untested_classes = np.where(df_multitask_labels_sum == 0)
-        print(df_multitask_labels_sum)
-        print(f'classes not tested on: {untested_classes}')
+        print(f'{untested_classes[0].shape[0]} classes not tested on: {untested_classes}')
+        # -------------------------------------------------
         
+        ## Create image sequences
         full_datasets = []
-        
         for i, ds_type in enumerate(['train', 'val', 'test']):
-            df_combined = nih_dataframes[i].append(df_other_splits[i])
-            
             if ds_type == 'train':
                 shuffle_on_epoch_end = shuffle_train
                 factor = 0.1
@@ -454,24 +486,22 @@ class MetaChexDataset():
             else: ## test
                 shuffle_on_epoch_end = False
                 factor = 1
-            
+
             steps = int(len(df_combined) / self.batch_size * factor)
-            
+
             if ds_type == 'train':
                 self.train_steps_per_epoch = steps
             elif ds_type == 'val':
                 self.val_steps_per_epoch = steps
             else: ## test
                 steps += 1 if len(df_combined) > self.batch_size * factor else 0 ## add for extra incomplete batch
-                
-            df_combined = sklearn.utils.shuffle(df_combined, random_state=271) # shuffle
-            
-            ds = ImageSequence(df=df_combined, steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
+
+            ds = ImageSequence(df=data_splits[i], steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
                                batch_size=self.batch_size, num_classes=self.num_classes_multitask)
             full_datasets.append(ds)
-        
-        return full_datasets
 
+        return full_datasets
+   
 
     def preprocess_data(self):
         """

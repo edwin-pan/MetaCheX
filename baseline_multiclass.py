@@ -76,7 +76,7 @@ if __name__ == '__main__':
     train_ds = dataset.train_ds
 
     # Load CheXNet
-    chexnet = load_chexnet(dataset.num_classes_multiclass)
+    chexnet = load_chexnet(dataset.num_classes_multiclass, multiclass=True)
     chexnet.trainable = True
     
     print(chexnet.summary())

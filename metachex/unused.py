@@ -139,6 +139,78 @@ def shuffle_and_batch(self, ds):
     
         #########
         
+    def get_data_splits(self, df, split=(0.8, 0.1, 0.1)):
+        """Splitting with tensorflow sequence instead of dataset"""
+        
+        # Load datasplit if it exists
+        if os.path.isfile(self.datasplit_path): 
+            with open(self.datasplit_path, 'rb') as file:
+                data_splits = pickle.load(file)
+        else:
+            ## Deal with NIH datasplit first
+            nih_dataframes = []
+            nih_df_sizes = []
+
+            for ds_type in ['train', 'val', 'test']:
+                df_nih = df[df['dataset'] == ds_type]
+                nih_df_sizes.append(len(df_nih))
+                nih_dataframes.append(df_nih)
+
+            ## Non-nih data
+
+            ## Split the rest of the data relatively evenly according to the ratio per class
+            ## That is, for each label, the first 80% goes to train, the next 10% to val, the final 10% to test
+            df_other = df[df['dataset'].isna()]
+            df_other = sklearn.utils.shuffle(df_other, random_state=271) # shuffle
+
+            df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
+
+            image_paths, multitask_labels = df_other['image_path'].values, np.array(df_other['label_multitask'].to_list())
+
+            for i in range(multitask_labels.shape[1]):
+                rows_with_label = multitask_labels[:, i] == 1
+                images_with_label = image_paths[rows_with_label]
+
+                df_subsplit = df_other.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
+
+                val_idx = int(len(df_subsplit) * split[0])
+                test_idx = int(len(df_subsplit) * (split[0] + split[1]))
+                df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(val_idx))
+                df_other_splits[1] = df_other_splits[1].append(df_subsplit[val_idx:test_idx])
+                df_other_splits[2] = df_other_splits[2].append(df_subsplit[test_idx:])
+
+            df_other_train_val_same = df_other_splits[1].loc[df_other_splits[1]['image_path'].isin(df_other_splits[0]['image_path'])].copy()
+            df_other_train_test_same = df_other_splits[2].loc[df_other_splits[2]['image_path'].isin(df_other_splits[0]['image_path'])].copy()
+            df_other_val_test_same = df_other_splits[2].loc[df_other_splits[2]['image_path'].isin(df_other_splits[1]['image_path'])].copy()
+    #         print('train/val overlap: ', len(df_other_train_val_same))
+    #         print('train/test overlap; ', len(df_other_train_test_same))
+    #         print('val/test overlap; ', len(df_other_val_test_same))
+
+            ## remove train/test and val/test overlaps on train and val sets (keep in the test set -- ensures all labels tested on)
+            df_other_splits[0] = df_other_splits[0].loc[~df_other_splits[0]['image_path'].isin(df_other_train_test_same['image_path'])]
+            df_other_splits[1] = df_other_splits[1].loc[~df_other_splits[1]['image_path'].isin(df_other_val_test_same['image_path'])]
+
+            ## remove train/val overlap on the val set 
+            df_other_splits[1] = df_other_splits[1].loc[~df_other_splits[1]['image_path'].isin(df_other_train_val_same['image_path'])]
+
+            ## drop duplicates in val and test (duplicates ok in train -- oversampling-ish)
+            df_other_splits[1].drop_duplicates(subset='image_path', inplace=True)
+            df_other_splits[2].drop_duplicates(subset='image_path', inplace=True)
+        
+            data_splits = []
+            for i, ds_type in enumerate(['train', 'val', 'test']):
+                df_combined = nih_dataframes[i].append(df_other_splits[i])
+                df_combined = sklearn.utils.shuffle(df_combined, random_state=271) # shuffle
+                data_splits.append(df_combined)
+            
+            ## Dump to pickle
+            with open(self.datasplit_path, 'wb') as file:
+                pickle.dump(data_splits, file, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        print([len(data_splits[i]) for i in range(3)])
+        return data_splits
+    
+        
 class ChexNetWithSupCon():
     
     def __init__(self, encoder_with_proj_head,
