@@ -641,9 +641,11 @@ class MetaChexDataset():
         else:
             df = pd.read_pickle(path)
             
-            self.unique_labels = list(self.unique_labels_dict.keys())
+            self.unique_labels = sorted(list(self.unique_labels_dict.keys()))
+            self.unique_labels.remove('No Finding')
+            print(len(self.unique_labels))
         
-        self.num_classes_multitask = len(self.unique_labels) - 1 ## remove no finding
+        self.num_classes_multitask = len(self.unique_labels)
         self.num_classes_multiclass = max(df['label_num_multi'].values) + 1
         
         if self.multiclass:

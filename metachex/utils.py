@@ -15,6 +15,7 @@ from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay
 from metachex.configs.config import *
 from sklearn.metrics.pairwise import euclidean_distances
 from metachex.image_sequence import ImageSequence
+import matplotlib.pyplot as plt
 
 colormap =  lambda x, N: np.array(matplotlib.cm.get_cmap('viridis')(x/N))
 
@@ -168,7 +169,7 @@ def mean_auroc(y_true, y_pred, dataset=None, eval=False, dir_path='.'):
                 score = roc_auc_score(y_true[:, i], y_pred[:, i])
                 aurocs.append(score)
             except ValueError:
-                print(f'index: {i}')
+                print(f'{dataset.unique_labels[i]} not tested on')
                 score = 0
             if eval:
                 f.write(f"{dataset.unique_labels[i]}: {score}\n")
@@ -193,15 +194,18 @@ def average_precision(y_true, y_pred, dataset, dir_path=".", plot=True):
                     precision, recall, _ = precision_recall_curve(y_true[:, i], y_pred[:, i])
                     display = PrecisionRecallDisplay(recall=recall, precision=precision, average_precision=ap)
                     display.plot()
-                    plt = display.figure_
-                    plt.savefig(os.path.join(dir_path, 'pr_plots', f"{dataset.unique_labels[i]}_pr_curve.png"))
+                    plot = display.figure_
+                    plot.savefig(os.path.join(dir_path, 'pr_plots', f"{dataset.unique_labels[i]}_pr_curve.png"))
+                    plt.close()
                 aps.append(ap)
             except RuntimeWarning:
+                print(f'{dataset.unique_labels[i]} not tested on')
                 ap = 'N/A'
             f.write(f"{dataset.unique_labels[i]}: {ap}\n")
         mean_ap = np.mean(aps)
         f.write("-------------------------\n")
         f.write(f"mean average precision: {mean_ap}\n")
+    print(f"mean average precision: {mean_ap}")
 
 
 def proto_acc_outer(num_classes=5, num_samples_per_class=3, num_query=5):

@@ -105,28 +105,27 @@ if __name__ == '__main__':
     if args.evaluate:
         print("[INFO] Evaluating performance")
         eval_path = args.ckpt_save_path if args.pretrained is None else args.pretrained
-        y_test_true = dataset.test_ds.get_y_true() 
-        
         y_test_true_path = os.path.join(record_dir, 'y_test_true.pkl')
+        
         if os.path.isfile(y_test_true_path):
             with open(y_test_true_path, 'rb') as file:
                 y_test_true = pickle.load(file)     
         else:
             with open(y_test_true_path, 'wb') as file:
+                y_test_true = dataset.test_ds.get_y_true() 
                 pickle.dump(y_test_true, file)
         
         y_test_pred_path = os.path.join(record_dir, 'y_test_pred.pkl')
-        y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
         if os.path.isfile(y_test_pred_path):
             with open(y_test_pred_path, 'rb') as file:
                 y_test_pred = pickle.load(file)
         else:
             with open(y_test_pred_path, 'wb') as file:
+                y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
                 pickle.dump(y_test_pred, file)
         
         dir_path = os.path.dirname(eval_path)
         mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
-        mean_auroc_baseline(y_test_true, y_test_pred)
         average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
 
     # Generate tSNE
