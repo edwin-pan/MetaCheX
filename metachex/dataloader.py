@@ -276,8 +276,8 @@ class MetaChexDataset():
         total = df_combo_nums['count'].values.sum()
         print(f'Total number of images: {total}')
         df_combo_counts.to_csv('data/df_combo_counts.csv', index=False)
-        df_label_nums.to_csv('data/df_label_nums.csv', index=False)
-        df_combo_nums.to_csv('data/df_combo_nums.csv', index=False)
+        df_label_nums.to_csv('data/df_label_nums.csv', index=True)
+        df_combo_nums.to_csv('data/df_combo_nums.csv', index=True)
 
         return unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums
     
