@@ -67,8 +67,8 @@ class ImageSequence(Sequence):
         return image_array
 
     def transform_batch_images(self, batch_x):
-        if self.augmenter is not None:
-            batch_x = self.augmenter.augment_images(batch_x)
+#         if self.augmenter is not None:
+#             batch_x = self.augmenter.augment_images(batch_x)
         imagenet_mean = np.array([0.485, 0.456, 0.406])
         imagenet_std = np.array([0.229, 0.224, 0.225])
         batch_x = (batch_x - imagenet_mean) / imagenet_std

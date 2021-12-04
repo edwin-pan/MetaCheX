@@ -58,8 +58,7 @@ def compile():
     chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                     loss=loss_fn.weighted_binary_crossentropy(),
                     metrics=[mean_auroc_baseline, 
-                            tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask)], 
-                    run_eagerly=True)
+                            tfa.metrics.F1Score(average='micro',num_classes=dataset.num_classes_multitask)])
 
 
 if __name__ == '__main__':

@@ -24,7 +24,7 @@ def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_wei
                             input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3)):
 
     img_input = tf.keras.layers.Input(shape=input_shape)
-    base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights=None,  ## uncomment
+    base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, #weights=None,  # use imagenet weights
                                                             input_tensor=img_input, pooling='avg')
     base_model.trainable = False
 
@@ -32,20 +32,25 @@ def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_wei
     x = base_model.output
     predictions = tf.keras.layers.Dense(len(class_names), activation="sigmoid", name="predictions")(x)
     model = tf.keras.models.Model(inputs=img_input, outputs=predictions)
-    model.load_weights(weights_path) ## uncomment
+#     model.load_weights(weights_path) ## uncomment
 
     return model
 
 
-def load_chexnet(output_dim, multiclass=False, embedding_dim=128):
+def load_chexnet(output_dim, input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3), multiclass=False, embedding_dim=128):
     """
     output_dim: dimension of output
     multiclass: whether or not prediction task is multiclass (vs. binary multitask)
     Note: multiclass argument is only relevant for baseline models
     """
     
-    base_model_old = load_chexnet_pretrained()
-    x = base_model_old.layers[-2].output ## remove old prediction layer
+#     base_model_old = load_chexnet_pretrained()
+#     x = base_model_old.layers[-2].output ## remove old prediction layer
+    
+    img_input = tf.keras.layers.Input(shape=input_shape)
+    base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights='imagenet',  # use imagenet weights
+                                                            input_tensor=img_input, pooling='avg')
+    x = base_model.output
     
     ## The prediction head can be more complicated if you want
     embeddings = tf.keras.layers.Dense(embedding_dim, name='embedding', activation='relu')(x)
@@ -54,9 +59,11 @@ def load_chexnet(output_dim, multiclass=False, embedding_dim=128):
         activation = 'softmax'
     else:
         activation = 'sigmoid'
+        
     # BASELINE: directly predict
-    predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation=activation)(normalized_embeddings) 
-    chexnet = tf.keras.models.Model(inputs=base_model_old.inputs,outputs=predictions)
+    predictions = tf.keras.layers.Dense(output_dim, name='prediction', activation=activation)(normalized_embeddings)
+    
+    chexnet = tf.keras.models.Model(inputs=base_model.inputs,outputs=predictions)
     return chexnet
     #base_model_old.trainable=False
     #return base_model_old

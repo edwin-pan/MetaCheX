@@ -39,8 +39,7 @@ def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weigh
                         stage_num=1, num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
 
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-                                loss=loss_fn.supcon_full_loss(proto=True),
-                                run_eagerly=True)
+                                loss=loss_fn.supcon_full_loss(proto=True))
     elif stage_num == 2:
         loss_fn = Losses(child_to_parent_map=dataset.child_to_parent_map, 
                          embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
@@ -48,16 +47,14 @@ def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weigh
                          num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
         
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-                                loss=loss_fn.supcon_full_loss(proto=True),
-                                run_eagerly=True)
+                                loss=loss_fn.supcon_full_loss(proto=True))
         
     else:
         loss_fn = Losses(num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
 
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                                 loss=loss_fn.proto_loss(),
-                                metrics=[proto_acc],
-                                run_eagerly=True)
+                                metrics=[proto_acc])
                   
 
 def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_supcon_childparent"):

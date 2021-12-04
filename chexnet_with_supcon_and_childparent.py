@@ -35,8 +35,7 @@ def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weigh
                          stage_num=2, parent_weight=parent_weight, child_weight=child_weight, stage2_weight=stage2_weight)
 
     chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-                    loss=loss_fn.supcon_full_loss(),
-                    run_eagerly=True)
+                    loss=loss_fn.supcon_full_loss())
                   
 
 def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_supcon_childparent"):

@@ -59,8 +59,7 @@ def compile():
                                               num_query=dataset.n_query),
                                    proto_mean_auroc_outer(num_classes=dataset.n, 
                                               num_samples_per_class=dataset.k, 
-                                              num_query=dataset.n_query)],
-                           run_eagerly=True)
+                                              num_query=dataset.n_query)])
 
 
 def eval():
