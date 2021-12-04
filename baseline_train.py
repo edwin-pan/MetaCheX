@@ -98,7 +98,7 @@ if __name__ == '__main__':
     else:
         print("[INFO] Loading weights")
         # Load weights
-        chexnet.load_weights(args.pretrained)
+        #chexnet.load_weights(args.pretrained)
         record_dir = os.path.dirname(args.pretrained)
 
     # Evaluate

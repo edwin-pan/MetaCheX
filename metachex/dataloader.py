@@ -276,6 +276,63 @@ class MetaChexDataset():
         return unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums
     
     
+    def get_data_splits3(self, df, split=(0.7, 0.2, 0.1)):
+        """
+        Splits according to multiclass label to the split percentages as best as possible
+        Unlike get_data_splits2, we DO NOT split according to pre-defined NIH splits
+        We simply split each class up according to the percentages
+        """
+        
+        # Load datasplit if it exists
+        if os.path.isfile(self.datasplit_path): 
+            with open(self.datasplit_path, 'rb') as file:
+                data_splits = pickle.load(file)
+        
+            return data_splits
+        
+        # Datasplit does not exist
+        
+        ## Split the rest of the data relatively evenly according to the ratio per class
+        ## That is, for each label, the first 70% goes to train, the next 20% to val, the final 10% to test
+        df = sklearn.utils.shuffle(df, random_state=271) # shuffle
+        
+        data_splits = [pd.DataFrame(columns=df.columns)] * 3
+        
+        image_paths, multiclass_labels = df['image_path'].values, df['label_num_multi'].values
+        
+        data_dict = {'label': [], 'count': []}
+        
+        for i in range(df['label_num_multi'].max() + 1):
+            rows_with_label = np.where(multiclass_labels == i)
+            images_with_label = image_paths[rows_with_label]
+            
+            df_subsplit = df.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
+
+            if len(df_subsplit) > 0:
+                label = df_subsplit['label_str'].drop_duplicates().values[0]
+                data_dict['label'].append(label)
+                data_dict['count'].append(len(df_subsplit))
+                
+            val_idx = int(len(df_subsplit) * split[0])
+            test_idx = val_idx + int(len(df_subsplit) * split[1])
+            data_splits[0] = data_splits[0].append(df_subsplit[:val_idx])
+            data_splits[1] = data_splits[1].append(df_subsplit[val_idx:test_idx])
+            data_splits[2] = data_splits[2].append(df_subsplit[test_idx:])
+        
+        data_counts = pd.DataFrame.from_dict(data_dict)
+        data_counts.to_csv(os.path.join(PATH_TO_DATA_FOLDER, 'data_counts.csv'), index=False)
+        print(f'data_counts: \n {data_counts}')
+            
+        print(f'split counts: {[len(data_splits[i]) for i in range(len(data_splits))]}')
+        
+        ## Dump to pickle
+        with open(self.datasplit_path, 'wb') as file:
+            pickle.dump(data_splits, file, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        return data_splits
+
+    
+    
     def get_data_splits2(self, df, split=(0.7, 0.2, 0.1)):
         """
         Splits according to multiclass label to the split percentages as best as possible
@@ -382,7 +439,8 @@ class MetaChexDataset():
         Note: split is a 2-length tuple iff baseline == False; otherwise, 3-length
         """
         
-        data_splits = self.get_data_splits2(df, split=(split[0] // 2, split[0] - split[0] // 2, split[1])) ## (train, val, test)
+#         data_splits = self.get_data_splits2(df, split=(split[0] // 2, split[0] - split[0] // 2, split[1])) ## (train, val, test)
+        data_splits = self.get_data_splits3(df, split=(split[0] // 2, split[0] - split[0] // 2, split[1])) ## (train, val, test)
         
         if not baseline: ## combine train and val
             data_splits = [data_splits[0].append(data_splits[1]).reset_index(drop=True), data_splits[2]]
@@ -452,7 +510,8 @@ class MetaChexDataset():
     
     def get_multitask_generator_splits(self, df, split=(0.7, 0.2, 0.1), shuffle_train=True):
         
-        data_splits = self.get_data_splits2(df, split)
+#         data_splits = self.get_data_splits2(df, split)
+        data_splits = self.get_data_splits3(df, split)
         
         # -------------------------------------------------
         df_combined = data_splits[0]
