@@ -54,6 +54,7 @@ class ImageSequence(Sequence):
         
         batch_x_path = self.x_path[idx * self.batch_size:end_idx]
         batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
+        batch_x = self.transform_batch_images(batch_x)
         batch_y = self.y[idx * self.batch_size:end_idx]
         
         return batch_x, batch_y
@@ -65,6 +66,14 @@ class ImageSequence(Sequence):
         image_array = resize(image_array, self.target_size)
         return image_array
 
+    def transform_batch_images(self, batch_x):
+        if self.augmenter is not None:
+            batch_x = self.augmenter.augment_images(batch_x)
+        imagenet_mean = np.array([0.485, 0.456, 0.406])
+        imagenet_std = np.array([0.229, 0.224, 0.225])
+        batch_x = (batch_x - imagenet_mean) / imagenet_std
+        return batch_x
+    
     def get_y_true(self):
         """
         Use this function to get y_true for predict_generator
@@ -126,6 +135,7 @@ class ProtoNetImageSequence(ImageSequence):
         batch_q = np.asarray([self.load_image(x_path) for x_path in self.query_path_batches[idx]]) 
         batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
         batch_x = np.concatenate((batch_x, batch_q), axis=0)
+        batch_x = self.transform_batch_images(batch_x)
         
         batch_y = self.label_batches[idx].reshape(-1, 2) ## categorical
 #         batch_y = np.eye(self.num_classes)[self.label_batches[idx]]  

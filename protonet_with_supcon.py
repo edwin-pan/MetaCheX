@@ -30,7 +30,7 @@ def compile_stage(stage_num=1):
         loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
                         num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
 
-        chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+        chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                                 loss=loss_fn.supcon_label_loss(proto=True),
                                 run_eagerly=True)
     else:

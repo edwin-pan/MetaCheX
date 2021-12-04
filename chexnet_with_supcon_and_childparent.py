@@ -34,7 +34,7 @@ def compile_stage(stage_num=1, parent_weight=0.5, child_weight=0.2, stage2_weigh
                          embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
                          stage_num=2, parent_weight=parent_weight, child_weight=child_weight, stage2_weight=stage2_weight)
 
-    chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+    chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                     loss=loss_fn.supcon_full_loss(),
                     run_eagerly=True)
                   

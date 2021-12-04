@@ -56,7 +56,7 @@ def compile():
 
     loss_fn = Losses(class_weights, batch_size=dataset.batch_size)
 
-    chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+    chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                     loss=loss_fn.weighted_binary_crossentropy(),
     #                   loss_weights=1e5,
     #                 loss='binary_crossentropy',
@@ -88,18 +88,20 @@ if __name__ == '__main__':
     
     # Compile
     compile()
+    
+    record_dir = os.path.dirname(args.ckpt_save_path)
 
     # Get weights
-    if args.pretrained is None:
-        print("[INFO] Beginning Fine Tuning")
-        # Train
-        hist = train(args.num_epochs, args.ckpt_save_path)
-        record_dir = os.path.dirname(args.ckpt_save_path)
-    else:
-        print("[INFO] Loading weights")
-        # Load weights
-        #chexnet.load_weights(args.pretrained)
-        record_dir = os.path.dirname(args.pretrained)
+#     if args.pretrained is None:
+#         print("[INFO] Beginning Fine Tuning")
+#         # Train
+#         hist = train(args.num_epochs, args.ckpt_save_path)
+#         record_dir = os.path.dirname(args.ckpt_save_path)
+#     else:
+#         print("[INFO] Loading weights")
+#         # Load weights
+#         chexnet.load_weights(args.pretrained)
+#         record_dir = os.path.dirname(args.pretrained)
 
     # Evaluate
     if args.evaluate:

@@ -511,7 +511,7 @@ class MetaChexDataset():
     def get_multitask_generator_splits(self, df, split=(0.7, 0.2, 0.1), shuffle_train=True):
         
 #         data_splits = self.get_data_splits2(df, split)
-        data_splits = self.get_data_splits3(df, split)
+        data_splits = self.get_data_splits2(df, split)
         
         # -------------------------------------------------
         df_combined = data_splits[0]

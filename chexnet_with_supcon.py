@@ -23,7 +23,7 @@ def parse_args():
 def compile():
     loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size)
 
-    chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
+    chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                     loss=loss_fn.supcon_label_loss(),
                     # metrics=
                     run_eagerly=True)
