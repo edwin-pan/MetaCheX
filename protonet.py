@@ -59,6 +59,9 @@ def compile():
                                               num_query=dataset.n_query),
                                    proto_mean_auroc_outer(num_classes=dataset.n, 
                                               num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query),
+                                   proto_mean_f1_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
                                               num_query=dataset.n_query)])
 
 
@@ -69,6 +72,9 @@ def eval():
                                               num_samples_per_class=dataset.k, 
                                               num_query=dataset.n_query), 
                                      proto_mean_auroc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query),
+                                    proto_mean_f1_outer(num_classes=dataset.n, 
                                               num_samples_per_class=dataset.k, 
                                               num_query=dataset.n_query)],
                             run_eagerly=True) 
@@ -128,6 +134,7 @@ if __name__ == '__main__':
         
         dir_path = os.path.dirname(args.ckpt_save_path)
         mean_auroc(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
+        mean_f1(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
         average_precision(y_test_true, y_test_pred, eval_dataset, dir_path=dir_path)
 
     # Generate tSNE

@@ -108,6 +108,7 @@ if __name__ == '__main__':
 
         ## Metrics
         auroc = mean_auroc(y_test_labels, y_pred, dataset, eval=True, dir_path=record_dir)
+        mean_f1 = mean_f1(y_test_labels, y_pred, dataset, eval=True, dir_path=dir_path)
         mean_AP = average_precision(y_test_labels, y_pred, dataset, dir_path=record_dir)
         
 

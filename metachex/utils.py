@@ -10,7 +10,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from sklearn import manifold
 from sklearn.metrics import roc_auc_score, precision_score, recall_score, average_precision_score
-from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay
+from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay, f1_score
 
 from metachex.configs.config import *
 from sklearn.metrics.pairwise import euclidean_distances
@@ -215,6 +215,37 @@ def average_precision(y_true, y_pred, dataset, dir_path=".", plot=True):
     print(f"mean average precision: {mean_ap}")
 
 
+def mean_f1(y_true, y_pred, dataset=None, eval=False, dir_path="."):
+    test_f1_log_path = os.path.join(dir_path, "average_f1.txt")
+    
+    # Threshold (max in row = 1; else 0)
+    y_pred = tf.where(
+        tf.equal(tf.reduce_max(y_pred, axis=1, keepdims=True), y_pred), 
+        tf.constant(1, shape=y_pred.shape), 
+        tf.constant(0, shape=y_pred.shape)
+    )
+    assert(tf.reduce_all(tf.reduce_sum(y_pred, axis=1) == 1))
+    with open(test_f1_log_path, "w") as f:
+        f1s = []
+        for i in range(y_true.shape[1]):
+            try:
+                f1 = f1_score(y_true[:, i], y_pred[:, i], zero_division=0)
+                f1s.append(f1)
+            except RuntimeWarning:
+                print(f'{dataset.unique_labels[i]} not tested on')
+                f1 = 0
+            if eval:
+                f.write(f"{dataset.unique_labels[i]}: {f1}\n")
+        mean_f1 = np.mean(f1s)
+        
+        if eval:
+            f.write("-------------------------\n")
+            f.write(f"mean f1: {mean_f1}\n")
+    if eval:
+        print(f"mean f1: {mean_f1}")
+    return mean_f1
+      
+    
 def proto_acc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
     def proto_acc(labels, features):
         """
@@ -267,6 +298,29 @@ def proto_mean_auroc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
 #                              multi_class='ovr', labels=np.arange(num_classes))
     
     return proto_mean_auroc
+
+
+def proto_mean_f1_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_mean_f1(labels, features):
+    
+        support_labels = labels[:num_classes * num_samples_per_class, 0]
+        support_labels = support_labels.reshape((num_classes, num_samples_per_class))
+        support_features = features[:num_classes * num_samples_per_class]
+        support_features = support_features.reshape((num_classes, num_samples_per_class, -1))
+            
+        prototypes = tf.reduce_mean(support_features, axis=1)
+        prototype_labels = tf.reduce_mean(support_labels, axis=1)
+            
+        queries = features[-num_query:]
+        query_labels = labels[-num_query:, 0]
+        query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
+        
+        query_distances = get_distances(queries, prototypes)
+        query_preds = tf.nn.softmax(query_distances)
+    
+        return mean_f1(y_true=query_labels_one_hot, y_pred=query_preds)
+               
+    return proto_mean_f1
 
 
 def get_nearest_neighbour(queries, prototypes):

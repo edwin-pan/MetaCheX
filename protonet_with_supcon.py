@@ -37,7 +37,15 @@ def compile_stage(stage_num=1):
 
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                                 loss=loss_fn.proto_loss(),
-                                metrics=[proto_acc])
+                                metrics=[proto_acc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query), 
+                                     proto_mean_auroc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query),
+                                    proto_mean_f1_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query)])
                   
 
 def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_supcon_childparent"):
@@ -70,7 +78,15 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_su
 def eval():
     loss_fn = Losses(num_classes=dataset.n_test, num_samples_per_class=dataset.k_test, num_query=dataset.n_query_test)
     chexnet_encoder.compile(loss=loss_fn.proto_loss(),
-                            metrics=[proto_acc, proto_mean_auroc],
+                            metrics=[proto_acc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query), 
+                                     proto_mean_auroc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query),
+                                    proto_mean_f1_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_query=dataset.n_query)],
                             run_eagerly=True)
 
     chexnet_encoder.evaluate(dataset.test_ds, steps=dataset.num_meta_test_episodes)
@@ -137,6 +153,7 @@ if __name__ == '__main__':
         
         dir_path = os.path.dirname(args.ckpt_save_path)
         mean_auroc(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
+        mean_f1(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
         average_precision(y_test_true, y_test_pred, eval_dataset, dir_path=dir_path)
     
     # Generate tSNE
