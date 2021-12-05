@@ -198,11 +198,13 @@ def average_precision(y_true, y_pred, dataset, dir_path=".", plot=True):
             try:
                 ap = average_precision_score(y_true[:, i], y_pred[:, i])
                 if plot:
+                    pr_plot_dir = os.path.join(dir_path, 'pr_plots')
+                    os.makedirs(pr_plot_dir)
                     precision, recall, _ = precision_recall_curve(y_true[:, i], y_pred[:, i])
                     display = PrecisionRecallDisplay(recall=recall, precision=precision, average_precision=ap)
                     display.plot()
                     plot = display.figure_
-                    plot.savefig(os.path.join(dir_path, 'pr_plots', f"{dataset.unique_labels[i]}_pr_curve.png"))
+                    plot.savefig(os.path.join(pr_plot_dir, f"{dataset.unique_labels[i]}_pr_curve.png"))
                     plt.close()
                 aps.append(ap)
             except RuntimeWarning:
