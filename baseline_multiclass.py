@@ -57,8 +57,8 @@ def compile():
 
     chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                     loss=loss_fn.weighted_binary_crossentropy(),
-                    metrics=[mean_auroc_baseline, mean_f1,
-                            tfa.metrics.F1Score(average=None,num_classes=dataset.num_classes_multiclass)],
+                    metrics=[mean_auroc_baseline, 
+                             tfa.metrics.F1Score(average=None,num_classes=dataset.num_classes_multiclass)],
                     run_eagerly=True)
 
 
@@ -105,7 +105,6 @@ if __name__ == '__main__':
         
         dir_path = os.path.dirname(eval_path)
         mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
-#         mean_auroc_baseline(y_test_true, y_test_pred)
         mean_f1(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
         average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
 

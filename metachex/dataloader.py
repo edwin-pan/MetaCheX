@@ -288,7 +288,6 @@ class MetaChexDataset():
         Unlike get_data_splits2, we DO NOT split according to pre-defined NIH splits
         We simply split each class up according to the percentages
         """
-        
         # Load datasplit if it exists
         if os.path.isfile(self.datasplit_path): 
             with open(self.datasplit_path, 'rb') as file:
@@ -319,6 +318,7 @@ class MetaChexDataset():
                 data_dict['label'].append(label)
                 data_dict['count'].append(len(df_subsplit))
                 
+            
             val_idx = int(len(df_subsplit) * split[0])
             test_idx = val_idx + int(len(df_subsplit) * split[1])
             data_splits[0] = data_splits[0].append(df_subsplit[:val_idx])
@@ -446,7 +446,7 @@ class MetaChexDataset():
         """
         
 #         data_splits = self.get_data_splits2(df, split=(split[0] // 2, split[0] - split[0] // 2, split[1])) ## (train, val, test)
-        data_splits = self.get_data_splits3(df, split=(split[0] // 2, split[0] - split[0] // 2, split[1])) ## (train, val, test)
+        data_splits = self.get_data_splits3(df, split=(split[0] / 2, split[0] - split[0] / 2, split[1])) ## (train, val, test)
         
         if not baseline: ## combine train and val
             data_splits = [data_splits[0].append(data_splits[1]).reset_index(drop=True), data_splits[2]]
