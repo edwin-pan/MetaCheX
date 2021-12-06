@@ -264,13 +264,14 @@ def proto_acc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
             
         queries = features[-num_query:]
         query_labels = labels[-num_query:, 0]
+#         print(f"ground truth: \n {query_labels}")
 #         query_labels_cat = np.where(query_labels == 1)[1] ## get categorical labels
             
         query_preds = get_nearest_neighbour(queries, prototypes)
-           
+        
         num_correct = np.where(query_preds == query_labels)[0].shape[0]
-        total_num = labels.shape[0]
-        acc = num_correct / total_num
+        acc = num_correct / num_query
+#         print(f"acc: {acc}")
         return acc
     
     return proto_acc
@@ -291,7 +292,9 @@ def proto_mean_auroc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
         query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
         
         query_distances = get_distances(queries, prototypes)
+#         print(f"distances: \n {query_distances}")
         query_preds = tf.nn.softmax(query_distances)
+#         print(f"soft predictions: \n {query_preds}")
 #         print(f'query_labels: {query_labels}')
 #         print(f'query_preds: {query_preds}')
         
@@ -336,6 +339,7 @@ def get_nearest_neighbour(queries, prototypes):
 
     distances = get_distances(queries, prototypes)
     pred = np.argmin(distances, axis=1)
+    print(f"actual predictions: {pred}")
     
     return pred ## (batch_size,) (categorical)
     #return np.eye(prototypes.shape[0])[pred] ## one-hot
