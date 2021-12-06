@@ -1,3 +1,4 @@
+from typing import ByteString
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -36,6 +37,18 @@ def load_chexnet_pretrained(class_names=np.arange(14), weights_path='chexnet_wei
 
     return model
 
+def baby_conv(input_obj):
+    model = tf.keras.models.Sequential()
+    model.add(input_obj)
+    model.add(tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(244, 244, 3)))
+    model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+    model.add(tf.keras.layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(tf.keras.layers.GlobalAveragePooling2D())
+    # model.add(tf.keras.layers.Dense(embedding_dim))
+    # model.add(tf.keras.layers.Dense(1)) # this is not used
+    return model
 
 def load_chexnet(output_dim, input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3), multiclass=False, embedding_dim=128):
     """
@@ -48,13 +61,19 @@ def load_chexnet(output_dim, input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3), multiclass
 #     x = base_model_old.layers[-2].output ## remove old prediction layer
     
     img_input = tf.keras.layers.Input(shape=input_shape)
-    base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights='imagenet',  # use imagenet weights
-                                                            input_tensor=img_input, pooling='avg')
+    # base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights='imagenet',  # use imagenet weights
+    #                                                         input_tensor=img_input, pooling='avg')
+
+    # base_model = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet', 
+    #                                                         input_tensor=img_input, pooling='avg')
+
+    base_model = baby_conv(img_input)
+
     x = base_model.output
     
     ## The prediction head can be more complicated if you want
     embeddings = tf.keras.layers.Dense(embedding_dim, name='embedding', activation='relu')(x)
-    normalized_embeddings = tf.nn.l2_normalize(embeddings, axis=-1)
+    normalized_embeddings = embeddings # tf.nn.l2_normalize(embeddings, axis=-1)
     if multiclass:
         activation = 'softmax'
     else:
@@ -176,6 +195,7 @@ def mean_auroc(y_true, y_pred, dataset=None, eval=False, dir_path='.'):
                 score = roc_auc_score(y_true[:, i], y_pred[:, i])
                 aurocs.append(score)
             except ValueError:
+                import pdb; pdb.set_trace()
                 print(f'{dataset.unique_labels[i]} not tested on')
                 score = 0
             if eval:
@@ -246,7 +266,33 @@ def mean_f1(y_true, y_pred, dataset=None, eval=False, dir_path="."):
     if eval:
         print(f"mean f1: {mean_f1}")
     return mean_f1
-      
+
+def proto_sup_acc_outer(num_classes=5, num_samples_per_class=3, num_sup=5):
+    def proto_sup_acc(labels, features):
+        """
+        labels: [n * k + n_query, 2] 
+        features: [n * k + n_query, 128]
+        """
+        support_labels = labels[:num_classes * num_samples_per_class, 0]
+        support_labels = support_labels.reshape((num_classes, num_samples_per_class))
+        support_features = features[:num_classes * num_samples_per_class]
+        support_features = support_features.reshape((num_classes, num_samples_per_class, -1))
+            
+        prototypes = tf.reduce_mean(support_features, axis=1)
+        prototype_labels = tf.reduce_mean(support_labels, axis=1)
+            
+        # queries = features[-5:]
+        # query_labels = labels[-5:, 0]
+        # query_preds = get_nearest_neighbour(queries, prototypes)
+
+        supports = features[:num_classes * num_samples_per_class]
+        support_preds = get_nearest_neighbour(supports, prototypes)
+        num_correct = np.where(support_preds == labels[:num_classes * num_samples_per_class, 0])[0].shape[0]
+        acc = num_correct / num_sup
+#         print(f"acc: {acc}")
+        return acc
+    
+    return proto_sup_acc
     
 def proto_acc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
     def proto_acc(labels, features):
@@ -268,7 +314,6 @@ def proto_acc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
 #         query_labels_cat = np.where(query_labels == 1)[1] ## get categorical labels
             
         query_preds = get_nearest_neighbour(queries, prototypes)
-        
         num_correct = np.where(query_preds == query_labels)[0].shape[0]
         acc = num_correct / num_query
 #         print(f"acc: {acc}")
@@ -293,7 +338,7 @@ def proto_mean_auroc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
         
         query_distances = get_distances(queries, prototypes)
 #         print(f"distances: \n {query_distances}")
-        query_preds = tf.nn.softmax(query_distances)
+        query_preds = tf.nn.softmax(-1*query_distances)
 #         print(f"soft predictions: \n {query_preds}")
 #         print(f'query_labels: {query_labels}')
 #         print(f'query_preds: {query_preds}')
@@ -321,7 +366,7 @@ def proto_mean_f1_outer(num_classes=5, num_samples_per_class=3, num_query=5):
         query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
         
         query_distances = get_distances(queries, prototypes)
-        query_preds = tf.nn.softmax(query_distances)
+        query_preds = tf.nn.softmax(-1*query_distances)
     
         return mean_f1(y_true=query_labels_one_hot, y_pred=query_preds)
                
@@ -339,7 +384,7 @@ def get_nearest_neighbour(queries, prototypes):
 
     distances = get_distances(queries, prototypes)
     pred = np.argmin(distances, axis=1)
-    print(f"actual predictions: {pred}")
+    # print(f"actual predictions: {pred}")
     
     return pred ## (batch_size,) (categorical)
     #return np.eye(prototypes.shape[0])[pred] ## one-hot

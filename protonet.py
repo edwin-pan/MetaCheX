@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import argparse
+import wandb
+from wandb.keras import WandbCallback
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -40,7 +42,7 @@ def train(num_epochs=15, checkpoint_path="training_progress_protonet/cp_best.ckp
                 epochs=num_epochs,
                 steps_per_epoch=dataset.num_meta_train_episodes, 
                 validation_steps=1, 
-                callbacks=[cp_callback]
+                callbacks=[cp_callback, WandbCallback()]
                 )
 
     with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
@@ -57,10 +59,13 @@ def compile():
                            metrics=[proto_acc_outer(num_classes=dataset.n, 
                                               num_samples_per_class=dataset.k, 
                                               num_query=dataset.n_query),
-                                   proto_mean_auroc_outer(num_classes=dataset.n, 
+                                    proto_sup_acc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_sup=dataset.n*dataset.k), 
+                                    proto_mean_auroc_outer(num_classes=dataset.n, 
                                               num_samples_per_class=dataset.k, 
                                               num_query=dataset.n_query),
-                                   proto_mean_f1_outer(num_classes=dataset.n, 
+                                    proto_mean_f1_outer(num_classes=dataset.n, 
                                               num_samples_per_class=dataset.k, 
                                               num_query=dataset.n_query)],
                            run_eagerly=True)
@@ -72,6 +77,9 @@ def eval():
                             metrics=[proto_acc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query), 
+                                     proto_sup_acc_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_sup=dataset.n*dataset.k), 
                                      proto_mean_auroc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query),
@@ -84,7 +92,7 @@ def eval():
 
 
 def load_model():
-    chexnet_encoder = load_chexnet(1) ## any number will do, since we get rid of final dense layer
+    chexnet_encoder = load_chexnet(1, embedding_dim=64) ## any number will do, since we get rid of final dense layer
     chexnet_encoder = get_embedding_model(chexnet_encoder)
     chexnet_encoder.trainable = True
     
@@ -93,15 +101,17 @@ def load_model():
 
 if __name__ == '__main__':
     args = parse_args()
+    wandb.init(project="protonet-baby", entity="edwinpan")
+
     # os.environ["CUDA_VISIBLE_DEVICES"]=""
     tf.test.is_gpu_available()
     physical_devices = tf.config.experimental.list_physical_devices('GPU')
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     # Instantiate dataset
-    dataset = MetaChexDataset(protonet=True, batch_size=1, n=5, k=3, n_query=5, 
+    dataset = MetaChexDataset(protonet=True, batch_size=1, n=3, k=10, n_query=5, 
                               n_test=5, k_test=3, n_test_query=5, 
-                                  num_meta_train_episodes=100, num_meta_val_episodes=100, num_meta_test_episodes=1000)
+                                  num_meta_train_episodes=1000, num_meta_val_episodes=10, num_meta_test_episodes=10)
 #     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
     
     # Load CheXNet

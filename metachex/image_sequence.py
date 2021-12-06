@@ -193,8 +193,8 @@ class ProtoNetImageSequence(ImageSequence):
                 sampled_query_df = sampled_query_df.append(df_class_query.sample(n=query_sample_num))
                 
                 ## All the extra possible queries that were not sampled
-                extra_query_df = pd.concat([df_class_query[['label_str', 'image_path', 'label_num_multi']],
-                                            sampled_query_df[['label_str', 'image_path', 'label_num_multi']]]
+                extra_query_df = pd.concat([df_class_query[['label_str', 'image_path', 'label_num_multi', 'label']],
+                                            sampled_query_df[['label_str', 'image_path', 'label_num_multi', 'label']]]
                                           ).drop_duplicates(keep=False)
 #                 print(f"{classname} query_df.shape: {query_df.shape}")
                 
