@@ -251,7 +251,7 @@ def mean_f1(y_true, y_pred, dataset=None, eval=False, dir_path="."):
         f1s = []
         for i in range(y_true.shape[1]):
             try:
-                f1 = f1_score(y_true[:, i], y_pred[:, i], zero_division=0)
+                f1 = f1_score(y_true[:, i], y_pred[:, i])x
                 f1s.append(f1)
             except RuntimeWarning:
                 print(f'{dataset.unique_labels[i]} not tested on')
@@ -384,7 +384,11 @@ def get_nearest_neighbour(queries, prototypes):
 
     distances = get_distances(queries, prototypes)
     pred = np.argmin(distances, axis=1)
+<<<<<<< HEAD
     # print(f"actual predictions: {pred}")
+=======
+#     print(f"actual predictions: {pred}")
+>>>>>>> a35d07ce7d2549a5eb27ae9337d12ae6737e2e15
     
     return pred ## (batch_size,) (categorical)
     #return np.eye(prototypes.shape[0])[pred] ## one-hot
