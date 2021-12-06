@@ -199,7 +199,7 @@ def average_precision(y_true, y_pred, dataset, dir_path=".", plot=True):
                 ap = average_precision_score(y_true[:, i], y_pred[:, i])
                 if plot:
                     pr_plot_dir = os.path.join(dir_path, 'pr_plots')
-                    os.makedirs(pr_plot_dir)
+                    os.makedirs(pr_plot_dir, exist_ok=True)
                     precision, recall, _ = precision_recall_curve(y_true[:, i], y_pred[:, i])
                     display = PrecisionRecallDisplay(recall=recall, precision=precision, average_precision=ap)
                     display.plot()
