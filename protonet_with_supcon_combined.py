@@ -19,47 +19,34 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
     parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
-    parser.add_argument('-c', '--ckpt_save_path', default='training_progress_protonet_supcon/cp_best.ckpt')
+    parser.add_argument('-c', '--ckpt_save_path', default='training_progress_protonet_supcon_combined/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
-    parser.add_argument('-n1', '--num_epochs_stage_1', type=int, default=15, help='Number of epochs to train stage 1 for')
-    parser.add_argument('-n2', '--num_epochs_stage_2', type=int, default=15, help='Number of epochs to train stage 2 for')
+    parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
     return parser.parse_args()
 
-def compile_stage(stage_num=1):
-    if stage_num == 1:
-        loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
-                        num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
+def compile():
+    loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size,
+                    num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
 
-        chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-                                loss=loss_fn.supcon_label_loss(proto=True),
-                               run_eagerly=True)
-    else:
-        loss_fn = Losses(num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
-
-        chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-                                loss=loss_fn.proto_loss(),
-                                metrics=[proto_acc_outer(num_classes=dataset.n, 
-                                              num_samples_per_class=dataset.k, 
-                                              num_query=dataset.n_query), 
-                                     proto_mean_auroc_outer(num_classes=dataset.n, 
-                                              num_samples_per_class=dataset.k, 
-                                              num_query=dataset.n_query),
-                                    proto_mean_f1_outer(num_classes=dataset.n, 
-                                              num_samples_per_class=dataset.k, 
-                                              num_query=dataset.n_query)],
-                               run_eagerly=True)
+    chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+                            loss=loss_fn.proto_and_supcon_loss(),
+                            metrics=[proto_acc_outer(num_classes=dataset.n, 
+                                          num_samples_per_class=dataset.k, 
+                                          num_query=dataset.n_query), 
+                                 proto_mean_auroc_outer(num_classes=dataset.n, 
+                                          num_samples_per_class=dataset.k, 
+                                          num_query=dataset.n_query),
+                                proto_mean_f1_outer(num_classes=dataset.n, 
+                                          num_samples_per_class=dataset.k, 
+                                          num_query=dataset.n_query)])
                   
 
-def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_protonet_supcon"):
+def train(num_epochs=15, checkpoint_dir="training_progress_protonet_supcon"):
     # Create a callback that saves the model's weights
     ds = dataset.train_ds
-    if stage_num == 1:
-        checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best.ckpt")
-        hist_dict_name = 'trainStage1HistoryDict'
-    else:
-        checkpoint_path = os.path.join(checkpoint_dir, "stage2_cp_best.ckpt")
-        hist_dict_name = 'trainStage2HistoryDict'
-        
+    checkpoint_path = os.path.join(checkpoint_dir, "cp_best.ckpt")
+    hist_dict_name = 'trainHistoryDict'
+ 
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                         save_weights_only=True,
                                                         verbose=1)
@@ -79,7 +66,7 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_pr
 
 def eval():
     loss_fn = Losses(num_classes=dataset.n_test, num_samples_per_class=dataset.k_test, num_query=dataset.n_test_query)
-    chexnet_encoder.compile(loss=loss_fn.proto_loss(),
+    chexnet_encoder.compile(loss=loss_fn.proto_and_supcon_loss(),
                             metrics=[proto_acc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query), 
@@ -114,7 +101,7 @@ if __name__ == '__main__':
                               n_test=5, k_test=3, n_test_query=5,
                               num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=100,
                               )
-#     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
+    eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
 
     # Load CheXNet
     chexnet_encoder = load_model()
@@ -122,20 +109,14 @@ if __name__ == '__main__':
     print(chexnet_encoder.summary())
     
     # Compile
-    compile_stage(stage_num=1)
+    compile()
 
     # Get weights
     if args.pretrained is None:
         print("[INFO] Beginning Fine Tuning")
         
-        # Train stage 1
-        print("[INFO] Stage 1 Training")
-        stage1_hist = train_stage(num_epochs=args.num_epochs_stage_1, stage_num=1)
-        
-        # Compile stage 2
-        print("[INFO] Stage 2 Training")
-        compile_stage(stage_num=2)
-        stage2_hist = train_stage(num_epochs=args.num_epochs_stage_2, stage_num=2)
+        print("[INFO] Training")
+        hist = train(num_epochs=args.num_epochs)
         
         record_dir = os.path.dirname(args.ckpt_save_path)
     else:

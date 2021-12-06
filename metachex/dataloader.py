@@ -70,6 +70,7 @@ class MetaChexDataset():
         print("[INFO] shuffle & batch")
         if protonet:
             self.num_meta_train_episodes = num_meta_train_episodes
+            self.num_meta_val_episodes = num_meta_val_episodes
             self.num_meta_test_episodes = num_meta_test_episodes
             # Note: test_ds includes labels in self.df_parents as well as covid and tb
             [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits2(self.df_parents, self.df_covid_tb, 
@@ -120,11 +121,13 @@ class MetaChexDataset():
                 num_classes, num_samples_per_class, num_queries = n_test, k_test, n_test_query
                 steps = self.num_meta_test_episodes 
                 
-                data_splits[i] = data_splits[i].append(df_held_out).reset_index(drop=True)
+                data_splits[i] = data_splits[i].append(df_held_out)
+                data_splits[i] = data_splits[i].sample(frac=1).reset_index(drop=True)
                 
             else: # val
                 steps = self.num_meta_val_episodes
             
+#             print(ds_type)
             ds = ProtoNetImageSequence(data_splits[i], steps=steps, num_classes=num_classes, 
                                        num_samples_per_class=num_samples_per_class, 
                                        num_queries=num_queries, batch_size=self.batch_size, 

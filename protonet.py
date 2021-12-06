@@ -19,7 +19,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Baseline MetaChex: Fine-Tuned ChexNet')
     parser.add_argument('-t', '--tsne', action='store_true', help='Generate tSNE plot')
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
-    parser.add_argument('-c', '--ckpt_save_path', default='training_progress/cp_best.ckpt')
+    parser.add_argument('-c', '--ckpt_save_path', default='training_progress_protonet/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
     parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
     return parser.parse_args()
@@ -67,17 +67,17 @@ def compile():
 
 
 def eval():
-    loss_fn = Losses(num_classes=dataset.n_test, num_samples_per_class=dataset.k_test, num_query=dataset.n_query_test)
+    loss_fn = Losses(num_classes=dataset.n_test, num_samples_per_class=dataset.k_test, num_query=dataset.n_test_query)
     chexnet_encoder.compile(loss=loss_fn.proto_loss(),
-                            metrics=[proto_acc_outer(num_classes=dataset.n, 
-                                              num_samples_per_class=dataset.k, 
-                                              num_query=dataset.n_query), 
-                                     proto_mean_auroc_outer(num_classes=dataset.n, 
-                                              num_samples_per_class=dataset.k, 
-                                              num_query=dataset.n_query),
-                                    proto_mean_f1_outer(num_classes=dataset.n, 
-                                              num_samples_per_class=dataset.k, 
-                                              num_query=dataset.n_query)],
+                            metrics=[proto_acc_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query), 
+                                     proto_mean_auroc_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+                                    proto_mean_f1_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query)],
                             run_eagerly=True) 
 
     chexnet_encoder.evaluate(dataset.test_ds, steps=dataset.num_meta_test_episodes)
@@ -101,7 +101,7 @@ if __name__ == '__main__':
     # Instantiate dataset
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=5, k=3, n_query=5, 
                               n_test=5, k_test=3, n_test_query=5, 
-                              num_meta_train_episodes=100, num_meta_test_episodes=100)
+                                  num_meta_train_episodes=100, num_meta_val_episodes=100, num_meta_test_episodes=1000)
 #     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
     
     # Load CheXNet

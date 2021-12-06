@@ -178,40 +178,50 @@ class Losses():
         return proto_supcon_full_loss_inner if proto else supcon_full_loss_inner
     
     
-    def proto_loss(self):
-        def proto_loss_inner(labels, features):
-            """
-            labels: [n * k + n_query, 2]; proto-labels: labels[:, 0]; multiclass_labels: labels[:, 1]
-            features: [n * k + n_query, 128]
-            """
-            support_labels = labels[:self.num_classes * self.num_samples_per_class, 0]
-            support_labels = support_labels.reshape((self.num_classes, self.num_samples_per_class, -1))
-            support_features = features[:self.num_classes * self.num_samples_per_class]
-            support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
-            
-            prototypes = tf.reduce_mean(support_features, axis=1)
+    def proto_loss_inner(self, labels, features):
+        """
+        labels: [n * k + n_query, 2]; proto-labels: labels[:, 0]; multiclass_labels: labels[:, 1]
+        features: [n * k + n_query, 128]
+        """
+        support_labels = labels[:self.num_classes * self.num_samples_per_class, 0]
+        support_labels = support_labels.reshape((self.num_classes, self.num_samples_per_class, -1))
+        support_features = features[:self.num_classes * self.num_samples_per_class]
+        support_features = support_features.reshape((self.num_classes, self.num_samples_per_class, -1))
+
+        prototypes = tf.reduce_mean(support_features, axis=1)
 #             prototype_labels = support_labels
-            prototype_labels = tf.reduce_mean(support_labels, axis=1)
-            
-            queries = features[-self.num_query:]
-            query_labels = labels[-self.num_query:, 0]
+        prototype_labels = tf.reduce_mean(support_labels, axis=1)
+
+        queries = features[-self.num_query:]
+        query_labels = labels[-self.num_query:, 0]
 #             query_labels = np.eye(self.num_classes)[np.array(labels[-self.num_query:, 0])]
-            
+
 #             query_distances = tf.norm(queries[:, None, :] - prototypes[None, :, :], axis=-1)
-    
-            query_distances = get_distances(queries, prototypes)
+
+        query_distances = get_distances(queries, prototypes)
 #             query_distances = tf.convert_to_tensor(query_distances)
-            
-            ## loss.shape: (n, )
-            loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=-1 * query_distances,
-                                                                          labels=tf.stop_gradient(query_labels))
+
+        ## loss.shape: (n, )
+        loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=-1 * query_distances,
+                                                                      labels=tf.stop_gradient(query_labels))
 #             loss = tf.reduce_mean(loss)
-            
-            ## extend to (n * k + n_query, )
+
+        ## extend to (n * k + n_query, )
 #             loss = tf.ones(self.num_classes * self.num_samples_per_class + self.num_query) * loss
 #             print(f'loss: {loss}')
-            return loss
+        return loss
+    
+    def proto_and_supcon_loss(self):
+        def proto_and_supcon_loss_inner(labels, features):
+            return self.supcon_label_loss_proto(labels, features) + self.proto_loss_inner(labels, features)
         
-        return proto_loss_inner
+        return proto_and_supcon_loss_inner
+    
+    
+    def proto_loss(self):
+        def proto_loss_inner2(labels, features):
+            return self.proto_loss_inner(labels, features)
+        
+        return proto_loss_inner2
             
             
