@@ -240,11 +240,11 @@ class ProtoNetImageSequence(ImageSequence):
         self.query_path_batches = np.stack(all_query_path_batches) ## (batch_size, num_query)
         self.query_label_batches = np.stack(all_query_label_batches) ## (batch_size, num_classes, 2) 
         
-        print(f'self.path_batches.shape: {self.path_batches.shape}')
-        print(f'self.label_batches.shape: {self.label_batches.shape}')
-#         print(f'self.multiclass_label_batches.shape: {self.multiclass_label_batches.shape}')
-        print(f'self.query_path_batches.shape: {self.query_path_batches.shape}')
-        print(f'self.query_label_batches.shape: {self.query_label_batches.shape}')
+#         print(f'self.path_batches.shape: {self.path_batches.shape}')
+#         print(f'self.label_batches.shape: {self.label_batches.shape}')
+# #         print(f'self.multiclass_label_batches.shape: {self.multiclass_label_batches.shape}')
+#         print(f'self.query_path_batches.shape: {self.query_path_batches.shape}')
+#         print(f'self.query_label_batches.shape: {self.query_label_batches.shape}')
 
     def on_epoch_end(self):
         if self.shuffle:

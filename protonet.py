@@ -62,7 +62,8 @@ def compile():
                                               num_query=dataset.n_query),
                                    proto_mean_f1_outer(num_classes=dataset.n, 
                                               num_samples_per_class=dataset.k, 
-                                              num_query=dataset.n_query)])
+                                              num_query=dataset.n_query)],
+                           run_eagerly=True)
 
 
 def eval():
@@ -101,7 +102,7 @@ if __name__ == '__main__':
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=5, k=3, n_query=5, 
                               n_test=5, k_test=3, n_test_query=5, 
                               num_meta_train_episodes=100, num_meta_test_episodes=100)
-    eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
+#     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
     
     # Load CheXNet
     chexnet_encoder = load_model()
@@ -128,14 +129,14 @@ if __name__ == '__main__':
         print("[INFO] Evaluating performance")
         eval() ## protoloss, proto_acc, proto_mean_auroc
         
-        y_test_true = eval_dataset.test_ds.get_y_true() 
-        y_test_embeddings = chexnet_encoder.predict(eval_dataset.test_ds, verbose=1)
-        y_pred = nn.get_soft_predictions(y_test_embeddings)
+#         y_test_true = eval_dataset.test_ds.get_y_true() 
+#         y_test_embeddings = chexnet_encoder.predict(eval_dataset.test_ds, verbose=1)
+#         y_pred = nn.get_soft_predictions(y_test_embeddings)
         
-        dir_path = os.path.dirname(args.ckpt_save_path)
-        mean_auroc(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
-        mean_f1(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
-        average_precision(y_test_true, y_test_pred, eval_dataset, dir_path=dir_path)
+#         dir_path = os.path.dirname(args.ckpt_save_path)
+#         mean_auroc(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
+#         mean_f1(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
+#         average_precision(y_test_true, y_test_pred, eval_dataset, dir_path=dir_path)
 
     # Generate tSNE
     if args.tsne:

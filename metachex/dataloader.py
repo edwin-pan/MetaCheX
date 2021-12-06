@@ -23,7 +23,7 @@ np.random.seed(271)
 class MetaChexDataset():
     def __init__(self, shuffle_train=True, multiclass=False, baseline=False, protonet=False, batch_size=8, 
                  n=5, k=3, n_query=5, n_test=5, k_test=3, n_test_query=5,
-                 num_meta_train_episodes=100, num_meta_test_episodes=1000):
+                 num_meta_train_episodes=100, num_meta_val_episodes=1, num_meta_test_episodes=1000):
         self.batch_size = batch_size
         self.multiclass = multiclass
         
@@ -123,9 +123,9 @@ class MetaChexDataset():
                 data_splits[i] = data_splits[i].append(df_held_out).reset_index(drop=True)
                 
             else: # val
-                steps = 1 
+                steps = self.num_meta_val_episodes
             
-            ds = ProtoNetImageSequence(dfs[i], steps=steps, num_classes=num_classes, 
+            ds = ProtoNetImageSequence(data_splits[i], steps=steps, num_classes=num_classes, 
                                        num_samples_per_class=num_samples_per_class, 
                                        num_queries=num_queries, batch_size=self.batch_size, 
                                        shuffle_on_epoch_end=shuffle_on_epoch_end)
