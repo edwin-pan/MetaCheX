@@ -51,7 +51,7 @@ def train(num_epochs=15, checkpoint_path="training_progress_baseline_multiclass/
 
 
 def compile():
-    _, class_weights = dataset.get_class_weights(one_cap=True)
+    class_weights = dataset.get_class_weights2(one_cap=True)
 
     loss_fn = Losses(class_weights, batch_size=dataset.batch_size)
 

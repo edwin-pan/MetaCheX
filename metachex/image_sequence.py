@@ -16,7 +16,7 @@ class ImageSequence(Sequence):
 
     def __init__(self, df, batch_size=8,
                  target_size=(224, 224), augmenter=None, verbose=0, steps=None,
-                 shuffle_on_epoch_end=True, random_state=271, num_classes=26, multiclass=False,
+                 shuffle_on_epoch_end=True, random_state=271, num_classes=18, multiclass=False,
                  parents_only=False):
         """
         :param df: dataframe of all the images for a specific split (train, val or test)

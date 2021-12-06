@@ -54,11 +54,16 @@ class MetaChexDataset():
         self.df_condensed = self.generate_labels(self.df_condensed, 'data_condensed.pkl')
         
         if multiclass or protonet:
-            print("[INFO] get child-to-parents mapping")
-            ## list of multiclass labels corresponding to multitask index
-            self.parent_multiclass_labels = np.ones((self.num_classes_multitask + 1,)) * -1  ## +1 for 'No Finding' label
-            self.get_child_to_parent_mapping()
-            self.get_num_parents_to_count_df()
+            self.df_parents, self.df_covid_tb, self.df_children = self.subsample_data()
+            print(self.df_parents['label_str'].drop_duplicates().values)
+            print(self.df_covid_tb['label_str'].drop_duplicates().values)
+            print(len(self.df_children['label_str'].drop_duplicates()))
+            print(self.df_children['label_str'].drop_duplicates()[:10])
+#             print("[INFO] get child-to-parents mapping")
+#             ## list of multiclass labels corresponding to multitask index
+#             self.parent_multiclass_labels = np.ones((self.num_classes_multitask + 1,)) * -1  ## +1 for 'No Finding' label
+#             self.get_child_to_parent_mapping()
+#             self.get_num_parents_to_count_df()
 
         print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
@@ -66,10 +71,15 @@ class MetaChexDataset():
         if protonet:
             self.num_meta_train_episodes = num_meta_train_episodes
             self.num_meta_test_episodes = num_meta_test_episodes
-            [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits(self.df_condensed, 
+            # Note: test_ds includes labels in self.df_parents as well as covid and tb
+            [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits2(self.df_parents, self.df_covid_tb, 
                                                                                             n, k, n_query, n_test, k_test,
                                                                                             n_test_query,
                                                                                             shuffle_train=shuffle_train)
+#             [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits(self.df_condensed,
+#                                                                                             n, k, n_query, n_test, k_test,
+#                                                                                             n_test_query,
+#                                                                                             shuffle_train=shuffle_train)
             self.n, self.k, self.n_query = n, k, n_query
             self.n_test, self.k_test, self.n_test_query = n_test, k_test, n_test_query
         elif multiclass:
@@ -77,7 +87,8 @@ class MetaChexDataset():
                 [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, 
                                                                                      shuffle_train=shuffle_train)
             else:
-                [self.train_ds, self.val_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed,
+                self.df_combined = self.df_parents.append(self.df_covid_tb).reset_index(drop=True)
+                [self.train_ds, self.val_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_combined,
                                                                                                   shuffle_train=shuffle_train,
                                                                                                   baseline=baseline)
         else:
@@ -88,8 +99,43 @@ class MetaChexDataset():
         return
 
     
+    def get_protonet_generator_splits2(self, df, df_held_out, n, k, n_query, n_test, k_test, n_test_query, 
+                                      split=(0.7, 0.1, 0.2), shuffle_train=True):
+        """
+        Get datasplits (the same as the multiclass baseline but with added covid_tb to meta-test)
+        """
+        
+        data_splits = self.get_data_splits3(df, split=split) ## (train, val, test)
+        
+        ds_types = ['train', 'val', 'test']
+        
+        datasets = []
+        for i, ds_type in enumerate(ds_types):
+            shuffle_on_epoch_end = False
+            num_classes, num_samples_per_class, num_queries = n, k, n_query
+            if ds_type == 'train':
+                shuffle_on_epoch_end = True
+                steps = self.num_meta_train_episodes 
+            elif ds_type == 'test':
+                num_classes, num_samples_per_class, num_queries = n_test, k_test, n_test_query
+                steps = self.num_meta_test_episodes 
+                
+                data_splits[i] = data_splits[i].append(df_held_out).reset_index(drop=True)
+                
+            else: # val
+                steps = 1 
+            
+            ds = ProtoNetImageSequence(dfs[i], steps=steps, num_classes=num_classes, 
+                                       num_samples_per_class=num_samples_per_class, 
+                                       num_queries=num_queries, batch_size=self.batch_size, 
+                                       shuffle_on_epoch_end=shuffle_on_epoch_end)
+            
+            datasets.append(ds)
+        return datasets
+    
+    
     def get_protonet_generator_splits(self, df, n, k, n_query, n_test, k_test, n_test_query, 
-                                      split=(0.8, 0.1, 0.1), shuffle_train=True):
+                                      split=(0.7, 0.1, 0.2), shuffle_train=True):
         """
         Get datasets for train, val and test (n-way, k-shot)
         """
@@ -122,6 +168,7 @@ class MetaChexDataset():
             elif ds_type == 'test':
                 num_classes, num_samples_per_class, num_queries = n_test, k_test, n_test_query
                 steps = self.num_meta_test_episodes 
+                
             else: # val
                 steps = 1 
             
@@ -240,6 +287,16 @@ class MetaChexDataset():
             pickle.dump(self.child_to_parent_map, file, protocol=pickle.HIGHEST_PROTOCOL)
 
 #         print(self.child_to_parent_map)
+        
+    
+    def get_data_stats2(self, df):
+        """
+        returns label to count df
+        """
+        df_counts = df.groupby(['label_str']).size().to_frame('count')
+        total = df_counts['count'].values.sum()
+        print(f'Total number of images for 18-way classification: {total}')
+        return df_counts
         
         
     def get_data_stats(self, df):
@@ -438,7 +495,7 @@ class MetaChexDataset():
 
     
     
-    def get_multiclass_generator_splits(self, df, split=(0.7, 0.3), shuffle_train=True, baseline=False):
+    def get_multiclass_generator_splits(self, df, split=(0.7, 0.1, 0.2), shuffle_train=True, baseline=False):
         """
         Splitting with tensorflow sequence instead of dataset
         
@@ -446,7 +503,7 @@ class MetaChexDataset():
         """
         
 #         data_splits = self.get_data_splits2(df, split=(split[0] // 2, split[0] - split[0] // 2, split[1])) ## (train, val, test)
-        data_splits = self.get_data_splits3(df, split=(split[0] / 2, split[0] - split[0] / 2, split[1])) ## (train, val, test)
+        data_splits = self.get_data_splits3(df, split=split) ## (train, val, test)
         
         if not baseline: ## combine train and val
             data_splits = [data_splits[0].append(data_splits[1]).reset_index(drop=True), data_splits[2]]
@@ -567,6 +624,47 @@ class MetaChexDataset():
 
         return full_datasets
    
+    
+    def subsample_data(self):
+        """
+        self.df_condensed: the already truncated df with multitask labels
+        
+        Return: 
+        df_parents: df of all classes that appear individually as well as no finding, except covid and tb
+        df_covid_tb: df of just covid and tb samples
+        df_children: df of children of parents who appear individually (ie parents df_parents and/or df_covid_tb)
+        """
+        
+        ## Get only rows with singular classes (ie | not in df['label_str']
+        # Note: \| to escape the |
+        df_parents = self.df_condensed[~self.df_condensed['label_str'].str.contains('\|')].reset_index(drop=True)
+        df_parent_labels = df_parents[['label_str', 'label_multitask']].drop_duplicates(subset=['label_str'])
+        self.num_classes_multiclass = len(df_parent_labels) # note: includes no finding
+        df_parents['label_num_multi'] = df_parents.groupby(['label_str']).ngroup() # reset multiclass labels
+        
+        label_multitask_arr = np.array(df_parent_labels['label_multitask'].to_list()) ## [# indiv parents, 27]
+        
+        ## get parent rows and their multitask indices
+        _, parent_multitask_indices = np.where(label_multitask_arr == 1)
+        
+        ## Get all possible children (complement of df_parents)
+        df_children = self.df_condensed[self.df_condensed['label_str'].str.contains('\|')].reset_index(drop=True)
+        
+        ## Truncate df_children to only the ones whose parents are in df_parents
+        label_multitask_arr = np.array(df_children['label_multitask'].to_list()) ## [len(df_children), num_indiv_classes]
+        print(label_multitask_arr.shape)
+        child_row_indices, child_multitask_indices = np.where(label_multitask_arr == 1)
+
+        child_row_indices_we_want = child_multitask_indices[np.in1d(child_multitask_indices, parent_multitask_indices)]
+        
+        df_children = df_children.iloc[np.unique(child_row_indices_we_want)]
+        
+        ## Separate df_parents into covid_tb and everything else
+        df_covid_tb = df_parents[df_parents['label_str'].isin(['COVID-19', 'Tuberculosis'])]
+        df_parents = df_parents[~df_parents['label_str'].isin(['COVID-19', 'Tuberculosis'])]
+        
+        return df_parents, df_covid_tb, df_children
+        
 
     def preprocess_data(self):
         """
@@ -718,6 +816,24 @@ class MetaChexDataset():
             self.unique_labels = label_df.sort_values(by=['label_num_multi'])['label_str'].values
             
         return df
+    
+    
+    def get_class_weights2(self, one_cap=False):
+        """
+        Gets class weights for baseline multiclass (18-way)
+        """
+        counts = self.get_data_stats2(self.df_combined)
+        if one_cap: # Restrains between 0 and 1
+            weights = (counts['count'].sum() - counts['count'])/counts['count'].sum()
+            weights_false = counts['count']/counts['count'].sum()
+        else: # Unconstrained
+            weights = (1 / counts['count']) * (counts['count'].sum() / counts.shape[0])
+            weights_false = (1 / (counts['count'].sum()-counts['count'])) * (counts['count'].sum() / counts.shape[0]) 
+        
+        weights = weights.sort_index()
+        weights_false = weights_false.sort_index()
+        
+        return np.array([weights.values, weights_false.values])
     
     
     def get_class_weights(self, one_cap=False):
