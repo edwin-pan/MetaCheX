@@ -666,6 +666,8 @@ class MetaChexDataset():
         df_covid_tb = df_parents[df_parents['label_str'].isin(['COVID-19', 'Tuberculosis'])]
         df_parents = df_parents[~df_parents['label_str'].isin(['COVID-19', 'Tuberculosis'])]
         
+        self.unique_labels = df_parent_labels.sort_values(by=['label_num_multi'])['label_str'].values
+        
         return df_parents, df_covid_tb, df_children
         
 
