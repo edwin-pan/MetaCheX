@@ -24,7 +24,8 @@ def compile():
     loss_fn = Losses(embed_dim=chexnet_encoder.get_layer('embedding').output_shape[-1], batch_size=dataset.batch_size)
 
     chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-                    loss=loss_fn.supcon_label_loss())
+                    loss=loss_fn.supcon_label_loss(),
+                    run_eagerly=True)
                   
 
 def train_model(num_epochs=15, checkpoint_path="training_progress_supcon/cp_best.ckpt"):
@@ -108,7 +109,7 @@ if __name__ == '__main__':
 
         ## Metrics
         auroc = mean_auroc(y_test_labels, y_pred, dataset, eval=True, dir_path=record_dir)
-        mean_f1 = mean_f1(y_test_labels, y_pred, dataset, eval=True, dir_path=dir_path)
+        mean_f1 = mean_f1(y_test_labels, y_pred, dataset, eval=True, dir_path=record_dir)
         mean_AP = average_precision(y_test_labels, y_pred, dataset, dir_path=record_dir)
         
 
