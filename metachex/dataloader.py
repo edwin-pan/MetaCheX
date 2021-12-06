@@ -88,7 +88,7 @@ class MetaChexDataset():
                 [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, 
                                                                                      shuffle_train=shuffle_train)
             else:
-                self.df_combined = self.df_parents.append(self.df_covid_tb).reset_index(drop=True)
+                self.unique_labels = self.df_combined.sort_values(by=['label_num_multi'])['label_str'].values
                 [self.train_ds, self.val_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_combined,
                                                                                                   shuffle_train=shuffle_train,
                                                                                                   baseline=baseline)
@@ -662,11 +662,12 @@ class MetaChexDataset():
         
         df_children = df_children.iloc[np.unique(child_row_indices_we_want)]
         
+        ## Labels
+        self.unique_labels = df_parents.sort_values(by=['label_num_multi'])['label_str'].values
+        
         ## Separate df_parents into covid_tb and everything else
         df_covid_tb = df_parents[df_parents['label_str'].isin(['COVID-19', 'Tuberculosis'])]
         df_parents = df_parents[~df_parents['label_str'].isin(['COVID-19', 'Tuberculosis'])]
-        
-        self.unique_labels = df_parent_labels.sort_values(by=['label_num_multi'])['label_str'].values
         
         return df_parents, df_covid_tb, df_children
         
