@@ -55,10 +55,10 @@ class MetaChexDataset():
         
         if multiclass or protonet:
             self.df_parents, self.df_covid_tb, self.df_children = self.subsample_data()
-            print(self.df_parents['label_str'].drop_duplicates().values)
-            print(self.df_covid_tb['label_str'].drop_duplicates().values)
-            print(len(self.df_children['label_str'].drop_duplicates()))
-            print(self.df_children['label_str'].drop_duplicates()[:10])
+#             print(self.df_parents['label_str'].drop_duplicates().values)
+#             print(self.df_covid_tb['label_str'].drop_duplicates().values)
+#             print(len(self.df_children['label_str'].drop_duplicates()))
+#             print(self.df_children['label_str'].drop_duplicates()[:10])
 #             print("[INFO] get child-to-parents mapping")
 #             ## list of multiclass labels corresponding to multitask index
 #             self.parent_multiclass_labels = np.ones((self.num_classes_multitask + 1,)) * -1  ## +1 for 'No Finding' label

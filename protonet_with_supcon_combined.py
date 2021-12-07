@@ -38,22 +38,25 @@ def compile():
                                           num_query=dataset.n_query),
                                 proto_mean_f1_outer(num_classes=dataset.n, 
                                           num_samples_per_class=dataset.k, 
-                                          num_query=dataset.n_query)])
+                                          num_query=dataset.n_query)],
+                           run_eagerly=True)
                   
 
-def train(num_epochs=15, checkpoint_dir="training_progress_protonet_supcon"):
+def train(num_epochs=15, checkpoint_dir="training_progress_protonet_supcon_combined"):
     # Create a callback that saves the model's weights
-    ds = dataset.train_ds
     checkpoint_path = os.path.join(checkpoint_dir, "cp_best.ckpt")
     hist_dict_name = 'trainHistoryDict'
  
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
-                                                        save_weights_only=True,
-                                                        verbose=1)
+                                                     save_weights_only=True,
+                                                     verbose=1,
+                                                     monitor='val_loss',
+                                                     mode='min',
+                                                     save_best_only=True)
     
-    hist = chexnet_encoder.fit(ds,
+    hist = chexnet_encoder.fit(dataset.train_ds,
         epochs=num_epochs,
-        steps_per_epoch=dataset.num_meta_train_episodes, 
+        validation_data=dataset.val_ds,                    
         batch_size=dataset.batch_size, 
         callbacks=[cp_callback]
         )
@@ -70,6 +73,9 @@ def eval():
                             metrics=[proto_acc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query), 
+                                     proto_sup_acc_outer(num_classes=dataset.n, 
+                                              num_samples_per_class=dataset.k, 
+                                              num_sup=dataset.n*dataset.k),
                                      proto_mean_auroc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query),
@@ -82,7 +88,7 @@ def eval():
 
 
 def load_model():
-    chexnet_encoder = load_chexnet(1) ## any number will do, since we get rid of final dense layer
+    chexnet_encoder = load_chexnet(1, embedding_dim=64) ## any number will do, since we get rid of final dense layer
     chexnet_encoder = get_embedding_model(chexnet_encoder)
     chexnet_encoder.trainable = True
     
@@ -97,11 +103,10 @@ if __name__ == '__main__':
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     # Instantiate dataset
-    dataset = MetaChexDataset(multiclass=True, protonet=True, batch_size=1, n=5, k=3, n_query=5, 
+    dataset = MetaChexDataset(multiclass=True, protonet=True, batch_size=1, n=3, k=10, n_query=5, 
                               n_test=5, k_test=3, n_test_query=5,
                               num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=100,
                               )
-    eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
 
     # Load CheXNet
     chexnet_encoder = load_model()
@@ -129,15 +134,6 @@ if __name__ == '__main__':
     if args.evaluate:
         print("[INFO] Evaluating performance")
         eval() ## protoloss, proto_acc, proto_mean_auroc
-        
-#         y_test_true = eval_dataset.test_ds.get_y_true() 
-#         y_test_embeddings = chexnet_encoder.predict(eval_dataset.test_ds, verbose=1)
-#         y_pred = nn.get_soft_predictions(y_test_embeddings)
-        
-#         dir_path = os.path.dirname(args.ckpt_save_path)
-#         mean_auroc(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
-#         mean_f1(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
-#         average_precision(y_test_true, y_test_pred, eval_dataset, dir_path=dir_path)
     
     # Generate tSNE
     if args.tsne:

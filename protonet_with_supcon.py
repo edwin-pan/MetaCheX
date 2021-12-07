@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
     parser.add_argument('-n1', '--num_epochs_stage_1', type=int, default=15, help='Number of epochs to train stage 1 for')
     parser.add_argument('-n2', '--num_epochs_stage_2', type=int, default=15, help='Number of epochs to train stage 2 for')
+    parser.add_argument('-t2', '--train_stage2', action='store_true', help='Whether to train stage 2 (after loading weights)')
     return parser.parse_args()
 
 def compile_stage(stage_num=1):
@@ -32,7 +33,7 @@ def compile_stage(stage_num=1):
 
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                                 loss=loss_fn.supcon_label_loss(proto=True),
-                               run_eagerly=True)
+                                run_eagerly=True)
     else:
         loss_fn = Losses(num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
 
@@ -52,7 +53,6 @@ def compile_stage(stage_num=1):
 
 def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_protonet_supcon"):
     # Create a callback that saves the model's weights
-    ds = dataset.train_ds
     if stage_num == 1:
         checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best.ckpt")
         hist_dict_name = 'trainStage1HistoryDict'
@@ -61,13 +61,16 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_pr
         hist_dict_name = 'trainStage2HistoryDict'
         
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
-                                                        save_weights_only=True,
-                                                        verbose=1)
+                                                     save_weights_only=True,
+                                                     verbose=1,
+                                                     monitor='val_loss',
+                                                     mode='min',
+                                                     save_best_only=True
+                                                    )
     
-    hist = chexnet_encoder.fit(ds,
+    hist = chexnet_encoder.fit(dataset.train_ds,
         epochs=num_epochs,
-        steps_per_epoch=dataset.num_meta_train_episodes, 
-        batch_size=dataset.batch_size, 
+        validation_data=dataset.val_ds,                       
         callbacks=[cp_callback]
         )
 
@@ -95,7 +98,7 @@ def eval():
 
 
 def load_model():
-    chexnet_encoder = load_chexnet(1) ## any number will do, since we get rid of final dense layer
+    chexnet_encoder = load_chexnet(1, embedding_dim=64) ## any number will do, since we get rid of final dense layer
     chexnet_encoder = get_embedding_model(chexnet_encoder)
     chexnet_encoder.trainable = True
     
@@ -110,11 +113,10 @@ if __name__ == '__main__':
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     # Instantiate dataset
-    dataset = MetaChexDataset(multiclass=True, protonet=True, batch_size=1, n=5, k=3, n_query=5, 
+    dataset = MetaChexDataset(multiclass=True, protonet=True, batch_size=1, n=3, k=10, n_query=5, 
                               n_test=5, k_test=3, n_test_query=5,
                               num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=100,
                               )
-#     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
 
     # Load CheXNet
     chexnet_encoder = load_model()
@@ -142,21 +144,18 @@ if __name__ == '__main__':
         print("[INFO] Loading weights")
         # Load weights
         chexnet_encoder.load_weights(args.pretrained)
+        
+        if args.train_stage2:
+            print("[INFO] Stage 2 Training")
+            compile_stage(stage_num=2)
+            stage2_hist = train_stage(num_epochs=args.num_epochs_stage_2, stage_num=2)
+        
         record_dir = os.path.dirname(args.pretrained)
 
     # Evaluate
     if args.evaluate:
         print("[INFO] Evaluating performance")
         eval() ## protoloss, proto_acc, proto_mean_auroc
-        
-#         y_test_true = eval_dataset.test_ds.get_y_true() 
-#         y_test_embeddings = chexnet_encoder.predict(eval_dataset.test_ds, verbose=1)
-#         y_pred = nn.get_soft_predictions(y_test_embeddings)
-        
-#         dir_path = os.path.dirname(args.ckpt_save_path)
-#         mean_auroc(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
-#         mean_f1(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
-#         average_precision(y_test_true, y_test_pred, eval_dataset, dir_path=dir_path)
     
     # Generate tSNE
     if args.tsne:
