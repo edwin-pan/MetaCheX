@@ -35,7 +35,6 @@ class ImageSequence(Sequence):
         self.num_classes = num_classes
         self.multiclass = multiclass
         self.parents_only = parents_only
-        
         self.prepare_dataset()
         if steps is None:
             self.steps = int(np.ceil(len(self.x_path) / float(self.batch_size)))
@@ -109,7 +108,7 @@ class ProtoNetImageSequence(ImageSequence):
     
     def __init__(self, df, num_classes, num_samples_per_class, num_queries,
                  batch_size=1, target_size=(224, 224), verbose=0, steps=None, shuffle_on_epoch_end=True, 
-                 random_state=271):
+                 random_state=271, eval=False):
         
         self.df = df
         self.num_classes = num_classes
@@ -121,16 +120,35 @@ class ProtoNetImageSequence(ImageSequence):
         self.shuffle = shuffle_on_epoch_end
         self.random_state = random_state
         self.steps = steps
+        self.eval = eval
         self.prepare_dataset()
         
+        
+    def get_y_true(self):
+        """
+        Use this function to get y_true for predict_generator
+        In order to get correct y, you have to set shuffle_on_epoch_end=False.
+        """
+        if self.shuffle or not self.eval:
+            raise ValueError("""
+            You're trying run get_y_true() when generator option 'shuffle_on_epoch_end' is True or 'eval' is False.
+            """)
+        
+        support_labels = self.label_batches.reshape(self.steps, -1, 2) # (num_steps, n * k, 2)
+        query_labels = self.query_label_batches # (num_steps, n_query, 2)
+        query_masks = self.query_mask_batches # # (num_steps, n_query, 2)
+        
+        return np.concatenate((support_labels, query_labels, query_masks), axis=1) # (num_steps, n * k + 2 * n_query, 2)
         
     def __getitem__(self, idx):
         
         """
         batch_x: [num_classes x num_samples_per_class + num_queries, 224, 224, 3]
-        batch_y: [num_classes + num_queries, 2] (proto_labels: batch_y[:, 0]; multiclass_labels: batch_y[:, 1])
+        batch_y: [num_classes x num_samples_per_class + num_queries + num_queries, 2] 
+           - for batch_y[:num_class x num_samples_per_class + num_queries] -- proto_labels: batch_y[:, 0];
+                                                                           -- multiclass_labels: batch_y[:, 1]
+           - for batch_y[-num_queries: ] -- covid mask: batch_y[:, 0]; tb_mask: batch_y[:, 1]
         """
-#         print(f"getitem self.path_batches.shape: {self.path_batches.shape} self.label_batches.shape: {self.label_batches.shape}")
         batch_x_path = self.path_batches[idx].flatten()
         batch_q = np.asarray([self.load_image(x_path) for x_path in self.query_path_batches[idx]]) 
         batch_x = np.asarray([self.load_image(x_path) for x_path in batch_x_path])
@@ -138,25 +156,24 @@ class ProtoNetImageSequence(ImageSequence):
         batch_x = self.transform_batch_images(batch_x)
         
         batch_y = self.label_batches[idx].reshape(-1, 2) ## categorical
-#         batch_y = np.eye(self.num_classes)[self.label_batches[idx]]  
         batch_q_label = self.query_label_batches[idx] ## categorical
-#         batch_q_label = np.eye(self.num_classes)[self.query_label_batches[idx]]
         batch_y = np.concatenate((batch_y, batch_q_label), axis=0)
         
-#         batch_multiclass_labels = self.multiclass_label_batches[idx] ## categorical
+        if self.eval:
+            batch_q_masks = self.query_mask_batches[idx]
+            batch_y = np.concatenate((batch_y, batch_q_masks), axis=0)
         
-#         batch_labels = np.concatenate(batch_y, batch_multiclass_labels, axis=1)
-        
-        
-#         print(f"shapes: {batch_x.shape}, {batch_y.shape}")
         return batch_x, batch_y
     
     def prepare_dataset(self):
         """
         Try to divide n_query among all classes as evenly as possible
+        
+        self.query_mask_batches: for axis=2, column 0 = covid mask; column 1: tb mask; column 2: covid|tb mask
         """
         all_path_batches, all_label_batches = [], []
         all_query_path_batches, all_query_label_batches = [], []
+        all_query_mask_batches = []
         
         all_multiclass_label_batches = []
         
@@ -177,7 +194,6 @@ class ProtoNetImageSequence(ImageSequence):
             total_queries = 0
             for j, classname in enumerate(sampled_classes):
                 df_class = truncated_df[truncated_df['label_str'] == classname]
-#                 print(f"{classname} num_samples: {len(df_class)}")
                 df_class_sampled = df_class.sample(n=self.num_samples_per_class)
                 
                 df_class_query = pd.concat([df_class[['label_str', 'image_path', 'label_num_multi']], 
@@ -196,21 +212,13 @@ class ProtoNetImageSequence(ImageSequence):
                 extra_query_df = pd.concat([df_class_query[['label_str', 'image_path', 'label_num_multi', 'label']],
                                             sampled_query_df[['label_str', 'image_path', 'label_num_multi', 'label']]]
                                           ).drop_duplicates(keep=False)
-#                 print(f"{classname} query_df.shape: {query_df.shape}")
                 
                 path_batch.append(df_class_sampled['image_path'].values)
                 
                 ## Get multiclass label for sampled class
                 multiclass_label = df_class['label_num_multi'].drop_duplicates().values[0]
-#                 multiclass_label_batch.append(multiclass_label)
-                
-#                 label_batch.append(j)
                 label_batch.append([[j, multiclass_label]] * self.num_samples_per_class)
-#                 label_batch.append([j, multiclass_label]) ## j is the shuffled label in meta-train task
             
-            ## Sample queries
-#             sampled_query_df = query_df.sample(n=self.num_queries, random_state=self.random_state)
-#             sampled_query_df = query_df.reset_index(drop=True)
             
             other_sampled_query_df = extra_query_df.sample(n=max(0, self.num_queries-total_queries))
             sampled_query_df = sampled_query_df.append(other_sampled_query_df).reset_index(drop=True)
@@ -218,33 +226,38 @@ class ProtoNetImageSequence(ImageSequence):
             query_path_batch = sampled_query_df['image_path'].to_numpy()
             query_label_batch = sampled_query_df['label'].to_numpy().astype(int) ## categorical
             query_multiclass_label_batch = sampled_query_df['label_num_multi'].to_numpy().astype(int) ## multiclass labels
-            
-#             print(query_label_batch.shape, query_multiclass_label_batch.shape)
+
             query_label_batch = np.stack([query_label_batch, query_multiclass_label_batch], axis=1)
             
+            # COVID-19/TB query masks
+            if self.eval:
+                query_covid_mask = sampled_query_df['label_str'].values == 'COVID-19'
+                query_tb_mask = sampled_query_df['label_str'].values == 'Tuberculosis'
+#                 query_covid_tb_mask = query_covid_mask | query_tb_mask
+                query_mask_batch = np.stack([query_covid_mask, query_tb_mask], axis=1)
+#                 query_mask_batch = np.stack([query_covid_mask, query_tb_mask, query_covid_tb_mask], axis=1)
+                all_query_mask_batches.append(query_mask_batch)
+        
             all_query_path_batches.append(query_path_batch)
             all_query_label_batches.append(query_label_batch)
             
+            
             path_batch = np.array(path_batch)
             label_batch = np.array(label_batch).astype(int) ## categorical
-#             multiclass_label_batch = np.array(multiclass_label_batch).astype(int) ## categorical
+            
             
             all_path_batches.append(path_batch)
             all_label_batches.append(label_batch)
-#             all_multiclass_label_batches.append(multiclass_label_batch)
                 
         self.path_batches = np.stack(all_path_batches)  ## (batch_size, num_classes, num_samples_per_class)
-        self.label_batches = np.stack(all_label_batches) ## current (batch_size, num_classes, num_samples_per_class, 2) before (batch_size, num_classes, 2) 
-#         self.multiclass_label_batches = np.stack(all_multiclass_label_batches) # (batch_size, num_classes)
+        self.label_batches = np.stack(all_label_batches) ## current (batch_size, num_classes, num_samples_per_class, 2)
         
         self.query_path_batches = np.stack(all_query_path_batches) ## (batch_size, num_query)
         self.query_label_batches = np.stack(all_query_label_batches) ## (batch_size, num_classes, 2) 
         
-#         print(f'self.path_batches.shape: {self.path_batches.shape}')
-#         print(f'self.label_batches.shape: {self.label_batches.shape}')
-# #         print(f'self.multiclass_label_batches.shape: {self.multiclass_label_batches.shape}')
-#         print(f'self.query_path_batches.shape: {self.query_path_batches.shape}')
-#         print(f'self.query_label_batches.shape: {self.query_label_batches.shape}')
+        if self.eval:
+            self.query_mask_batches = np.stack(all_query_mask_batches) ## (batch_size, 2)
+            print(f'self.query_mask_batches.shape: {self.query_mask_batches.shape}') ## (batch_size, num_query, 2)
 
     def on_epoch_end(self):
         if self.shuffle:

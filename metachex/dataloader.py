@@ -17,6 +17,7 @@ import sklearn
 from skimage.transform import resize
 
 from metachex.image_sequence import ImageSequence, ProtoNetImageSequence
+import pickle5 as pickle
 
 np.random.seed(271)
 
@@ -117,21 +118,24 @@ class MetaChexDataset():
             if ds_type == 'train':
                 shuffle_on_epoch_end = True
                 steps = self.num_meta_train_episodes 
+                eval = False
             elif ds_type == 'test':
                 num_classes, num_samples_per_class, num_queries = n_test, k_test, n_test_query
                 steps = self.num_meta_test_episodes 
                 
                 data_splits[i] = data_splits[i].append(df_held_out)
                 data_splits[i] = data_splits[i].sample(frac=1).reset_index(drop=True)
+                eval = True
                 
             else: # val
                 steps = self.num_meta_val_episodes
+                eval = False
             
 #             print(ds_type)
             ds = ProtoNetImageSequence(data_splits[i], steps=steps, num_classes=num_classes, 
                                        num_samples_per_class=num_samples_per_class, 
                                        num_queries=num_queries, batch_size=self.batch_size, 
-                                       shuffle_on_epoch_end=shuffle_on_epoch_end)
+                                       shuffle_on_epoch_end=shuffle_on_epoch_end, eval=eval)
             
             datasets.append(ds)
         return datasets

@@ -195,8 +195,8 @@ def mean_auroc(y_true, y_pred, dataset=None, eval=False, dir_path='.'):
                 score = roc_auc_score(y_true[:, i], y_pred[:, i])
                 aurocs.append(score)
             except ValueError:
-                import pdb; pdb.set_trace()
-                print(f'{dataset.unique_labels[i]} not tested on')
+#                 import pdb; pdb.set_trace()
+                print(f'{i} not tested on')
                 score = 0
             if eval:
                 f.write(f"{dataset.unique_labels[i]}: {score}\n")
@@ -254,7 +254,7 @@ def mean_f1(y_true, y_pred, dataset=None, eval=False, dir_path="."):
                 f1 = f1_score(y_true[:, i], y_pred[:, i])
                 f1s.append(f1)
             except RuntimeWarning:
-                print(f'{dataset.unique_labels[i]} not tested on')
+                print(f'{i} not tested on')
                 f1 = 0
             if eval:
                 f.write(f"{dataset.unique_labels[i]}: {f1}\n")
@@ -280,19 +280,39 @@ def proto_sup_acc_outer(num_classes=5, num_samples_per_class=3, num_sup=5):
             
         prototypes = tf.reduce_mean(support_features, axis=1)
         prototype_labels = tf.reduce_mean(support_labels, axis=1)
-            
-        # queries = features[-5:]
-        # query_labels = labels[-5:, 0]
-        # query_preds = get_nearest_neighbour(queries, prototypes)
 
         supports = features[:num_classes * num_samples_per_class]
         support_preds = get_nearest_neighbour(supports, prototypes)
         num_correct = np.where(support_preds == labels[:num_classes * num_samples_per_class, 0])[0].shape[0]
         acc = num_correct / num_sup
-#         print(f"acc: {acc}")
         return acc
     
     return proto_sup_acc
+        
+def extract_prototypes_and_queries(num_classes, num_samples_per_class, num_query, labels, features):
+    support_labels = labels[:num_classes * num_samples_per_class, 0]
+    support_labels = support_labels.reshape((num_classes, num_samples_per_class))
+    support_features = features[:num_classes * num_samples_per_class]
+    support_features = support_features.reshape((num_classes, num_samples_per_class, -1))
+
+    prototypes = tf.reduce_mean(support_features, axis=1)
+
+    queries = features[num_classes * num_samples_per_class: num_classes * num_samples_per_class + num_query]
+    query_labels = labels[num_classes * num_samples_per_class: num_classes * num_samples_per_class + num_query, 0]
+    
+    return prototypes, queries, query_labels
+    
+def get_query_preds_and_labels(num_classes, num_samples_per_class, num_query, labels, features):
+    prototypes, queries, query_labels = extract_prototypes_and_queries(num_classes, num_samples_per_class,
+                                                                                         num_query, labels, features)
+    
+    query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
+
+    query_distances = get_distances(queries, prototypes)
+    query_preds = tf.nn.softmax(-1*query_distances)
+
+    return query_preds, query_labels_one_hot, query_labels
+    
     
 def proto_acc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
     def proto_acc(labels, features):
@@ -300,77 +320,255 @@ def proto_acc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
         labels: [n * k + n_query, 2] 
         features: [n * k + n_query, 128]
         """
-        support_labels = labels[:num_classes * num_samples_per_class, 0]
-        support_labels = support_labels.reshape((num_classes, num_samples_per_class))
-        support_features = features[:num_classes * num_samples_per_class]
-        support_features = support_features.reshape((num_classes, num_samples_per_class, -1))
-            
-        prototypes = tf.reduce_mean(support_features, axis=1)
-        prototype_labels = tf.reduce_mean(support_labels, axis=1)
-            
-        queries = features[-num_query:]
-        query_labels = labels[-num_query:, 0]
-#         print(f"ground truth: \n {query_labels}")
-#         query_labels_cat = np.where(query_labels == 1)[1] ## get categorical labels
-            
+        prototypes, queries, query_labels = extract_prototypes_and_queries(num_classes, num_samples_per_class,
+                                                                                         num_query, labels, features)
         query_preds = get_nearest_neighbour(queries, prototypes)
         num_correct = np.where(query_preds == query_labels)[0].shape[0]
         acc = num_correct / num_query
-#         print(f"acc: {acc}")
         return acc
     
     return proto_acc
 
 
+def get_proto_acc_for_class(num_classes, num_samples_per_class, num_query, labels, features, class_idx):
+    prototypes, queries, query_labels = extract_prototypes_and_queries(num_classes, num_samples_per_class,
+                                                                                         num_query, labels, features)
+            
+    query_preds = get_nearest_neighbour(queries, prototypes)
+
+    try:
+        mask = tf.cast(labels[-num_query:, class_idx], tf.bool) 
+        num = np.sum(mask)
+        if num == 0:
+            raise ZeroDivisionError
+        query_preds = query_preds[np.array(mask)]
+        query_labels = query_labels[np.array(mask)]
+        num_correct = np.where(query_preds == query_labels)[0].shape[0]
+        acc = num_correct / num
+    except ZeroDivisionError:
+        acc = tf.convert_to_tensor([])
+
+    return acc
+
+
+def proto_acc_covid_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_acc_covid(labels, features):
+        """
+        labels: [n * k + n_query + n_query, 2] 
+           - for labels[:n x k + n_query] -- proto_labels: labels[:, 0]; multiclass_labels: labels[:, 1]
+           - for labels[-n_query: ] -- covid mask: labels[:, 0]; tb_mask: labels[:, 1]
+        features: [n * k + n_query, 128]
+        """
+        covid_acc = get_proto_acc_for_class(num_classes, num_samples_per_class, num_query, labels, features, class_idx=0)
+
+        return covid_acc
+    return proto_acc_covid
+
+def proto_acc_tb_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_acc_tb(labels, features):
+        """
+        labels: [n * k + n_query + n_query, 2] 
+           - for labels[:n x k + n_query] -- proto_labels: labels[:, 0]; multiclass_labels: labels[:, 1]
+           - for labels[-n_query: ] -- covid mask: labels[:, 0]; tb_mask: labels[:, 1]
+        features: [n * k + n_query, 128]
+        """
+        tb_acc = get_proto_acc_for_class(num_classes, num_samples_per_class, num_query, labels, features, class_idx=1)
+
+        return tb_acc
+    
+    return proto_acc_tb
+
+def proto_acc_covid_tb_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_acc_covid_tb(labels, features):
+        """
+        labels: [n * k + n_query + n_query, 2] 
+           - for labels[:n x k + n_query] -- proto_labels: labels[:, 0]; multiclass_labels: labels[:, 1]
+           - for labels[-n_query: ] -- covid mask: labels[:, 0]; tb_mask: labels[:, 1]
+        features: [n * k + n_query, 128]
+        """
+        prototypes, queries, query_labels = extract_prototypes_and_queries(num_classes, num_samples_per_class,
+                                                                                         num_query, labels, features)
+            
+        query_preds = get_nearest_neighbour(queries, prototypes)
+        
+        ## COVID|TB acc
+        try:
+            covid_tb_mask = tf.cast(labels[-num_query:, 0], tf.bool) | tf.cast(labels[-num_query:, 1], tf.bool)
+            num_covid_tb = np.sum(covid_tb_mask)
+            if num_covid_tb == 0:
+                raise ZeroDivisionError
+            covid_tb_query_preds = query_preds[np.array(covid_tb_mask)]
+            covid_tb_query_labels = query_labels[np.array(covid_tb_mask)]
+            num_correct = np.where(covid_tb_query_preds == covid_tb_query_labels)[0].shape[0]
+            covid_tb_acc = num_correct / num_covid_tb
+        except ZeroDivisionError:
+#             print("no covid or tb in meta-test task")
+            covid_tb_acc = tf.convert_to_tensor([])
+        
+        return covid_tb_acc
+    return proto_acc_covid_tb
+    
+    
+def get_query_preds_and_labels(num_classes, num_samples_per_class, num_query, labels, features):
+
+    prototypes, queries, query_labels = extract_prototypes_and_queries(num_classes, num_samples_per_class, 
+                                                                       num_query, labels, features)
+    
+    query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
+
+    query_distances = get_distances(queries, prototypes)
+    query_preds = tf.nn.softmax(-1*query_distances)
+
+    return query_preds, query_labels_one_hot, query_labels
+
+
 def proto_mean_auroc_outer(num_classes=5, num_samples_per_class=3, num_query=5):
     def proto_mean_auroc(labels, features):
-        support_labels = labels[:num_classes * num_samples_per_class, 0]
-        support_labels = support_labels.reshape((num_classes, num_samples_per_class))
-        support_features = features[:num_classes * num_samples_per_class]
-        support_features = support_features.reshape((num_classes, num_samples_per_class, -1))
-            
-        prototypes = tf.reduce_mean(support_features, axis=1)
-        prototype_labels = tf.reduce_mean(support_labels, axis=1)
-            
-        queries = features[-num_query:]
-        query_labels = labels[-num_query:, 0]
-        query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
         
-        query_distances = get_distances(queries, prototypes)
-#         print(f"distances: \n {query_distances}")
-        query_preds = tf.nn.softmax(-1*query_distances)
-#         print(f"soft predictions: \n {query_preds}")
-#         print(f'query_labels: {query_labels}')
-#         print(f'query_preds: {query_preds}')
-        
+        query_preds, query_labels_one_hot, query_labels = get_query_preds_and_labels(num_classes, num_samples_per_class,
+                                                                                     num_query, labels, features)
         return mean_auroc(y_true=query_labels_one_hot, y_pred=query_preds)
-#         return roc_auc_score(y_true=query_labels, y_score=query_preds, 
-#                              multi_class='ovr', labels=np.arange(num_classes))
     
     return proto_mean_auroc
+
+
+def get_auroc_score_for_class(num_classes, num_samples_per_class, num_query, labels, features, class_idx):
+    """
+    class_idx: 0 = covid, 1 = tb
+    """
+    query_preds, query_labels_one_hot, query_labels = get_query_preds_and_labels(num_classes, num_samples_per_class, 
+                                                                                 num_query, labels, features)
+        
+    try:
+        mask = tf.cast(labels[-num_query:, class_idx], tf.bool)
+        num = np.sum(mask)
+
+        if num == 0:
+            raise ZeroDivisionError
+        
+        idx = int(query_labels[np.array(mask)][0]) ## gets categorical label for covid
+
+        auroc_score = roc_auc_score(query_labels_one_hot[:, idx], query_preds[:, idx])
+    except ZeroDivisionError:
+        auroc_score = tf.convert_to_tensor([])
+    
+    return auroc_score
+
+
+def proto_mean_auroc_covid_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_mean_auroc_covid(labels, features):
+        
+        covid_auroc_score = get_auroc_score_for_class(num_classes, num_samples_per_class, num_query, 
+                                                      labels, features, class_idx=0)
+            
+        return covid_auroc_score
+    return proto_mean_auroc_covid
+
+def proto_mean_auroc_tb_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_mean_auroc_tb(labels, features):
+        
+        tb_auroc_score = get_auroc_score_for_class(num_classes, num_samples_per_class, num_query, 
+                                                      labels, features, class_idx=1)
+        return tb_auroc_score
+    return proto_mean_auroc_tb
+
+
+def proto_mean_auroc_covid_tb_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_mean_auroc_covid_tb(labels, features):
+        try: 
+            covid_mask = tf.cast(labels[-num_query:, 0], tf.bool)
+            tb_mask = tf.cast(labels[-num_query:, 1], tf.bool)
+            num_covid_tb = np.sum(covid_mask | tb_mask)
+
+            if num_covid_tb == 0:
+                raise ZeroDivisionError
+
+            covid_auroc = proto_mean_auroc_covid(num_classes, num_samples_per_class, num_query)
+            tb_auroc = proto_mean_auroc_tb(num_classes, num_samples_per_class, num_query)
+
+            print(covid_auroc, tb_auroc)
+            auroc = tf.reduce_mean(tf.concat([covid_auroc, tb_auroc], axis=0))
+        except ZeroDivisionError:
+            # no covid or tb in meta-test task
+            auroc = tf.convert_to_tensor([])
+        
+        return auroc
+    return proto_mean_auroc_covid_tb
 
 
 def proto_mean_f1_outer(num_classes=5, num_samples_per_class=3, num_query=5):
     def proto_mean_f1(labels, features):
     
-        support_labels = labels[:num_classes * num_samples_per_class, 0]
-        support_labels = support_labels.reshape((num_classes, num_samples_per_class))
-        support_features = features[:num_classes * num_samples_per_class]
-        support_features = support_features.reshape((num_classes, num_samples_per_class, -1))
-            
-        prototypes = tf.reduce_mean(support_features, axis=1)
-        prototype_labels = tf.reduce_mean(support_labels, axis=1)
-            
-        queries = features[-num_query:]
-        query_labels = labels[-num_query:, 0]
-        query_labels_one_hot = np.eye(num_classes)[np.array(query_labels).astype(int)]
-        
-        query_distances = get_distances(queries, prototypes)
-        query_preds = tf.nn.softmax(-1*query_distances)
+        query_preds, query_labels_one_hot, query_labels = get_query_preds_and_labels(num_classes, num_samples_per_class,
+                                                                                     num_query, labels, features)
     
         return mean_f1(y_true=query_labels_one_hot, y_pred=query_preds)
                
     return proto_mean_f1
+
+
+def get_f1_for_class(num_classes, num_samples_per_class, num_query, labels, features, class_idx):
+    query_preds, query_labels_one_hot, query_labels = get_query_preds_and_labels(num_classes, num_samples_per_class,
+                                                                                 num_query, labels, features)
+
+    query_preds = tf.where(
+    tf.equal(tf.reduce_max(query_preds, axis=1, keepdims=True), query_preds), 
+    tf.constant(1, shape=query_preds.shape), 
+    tf.constant(0, shape=query_preds.shape)
+    )
+
+    try:
+        mask = tf.cast(labels[-num_query:, class_idx], tf.bool)
+        num = np.sum(mask)
+
+        if num == 0:
+            raise ZeroDivisionError
+
+        idx = int(query_labels[np.array(mask)][0]) ## gets categorical label for covid
+
+        f1 = f1_score(query_labels_one_hot[:, idx], query_preds[:, idx])
+    except ZeroDivisionError:
+        f1 = tf.convert_to_tensor([])
+
+    return f1
+
+
+def proto_mean_f1_covid_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_mean_f1_covid(labels, features):
+        covid_f1_score = get_f1_for_class(num_classes, num_samples_per_class, num_query, labels, features, class_idx=0)
+            
+        return covid_f1_score
+    return proto_mean_f1_covid
+
+def proto_mean_f1_tb_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_mean_f1_tb(labels, features):
+        tb_f1_score = get_f1_for_class(num_classes, num_samples_per_class, num_query, labels, features, class_idx=1)
+        
+        return tb_f1_score
+    return proto_mean_f1_tb
+
+
+def proto_mean_f1_covid_tb_outer(num_classes=5, num_samples_per_class=3, num_query=5):
+    def proto_mean_f1_covid_tb(labels, features):
+        try: 
+            covid_mask = tf.cast(labels[-num_query:, 0], tf.bool)
+            tb_mask = tf.cast(labels[-num_query:, 1], tf.bool)
+            num_covid_tb = np.sum(covid_mask | tb_mask)
+
+            if num_covid_tb == 0:
+                raise ZeroDivisionError
+
+            covid_auroc = proto_mean_f1_covid_outer(num_classes, num_samples_per_class, num_query)
+            tb_auroc = proto_mean_f1_tb_outer(num_classes, num_samples_per_class, num_query)
+
+            f1 = tf.reduce_mean(tf.concat([covid_auroc, tb_auroc], axis=0))
+        except ZeroDivisionError:
+            # no covid or tb in meta-test task
+            f1 = tf.convert_to_tensor([])
+        
+        return f1
+    return proto_mean_f1_covid_tb
+
 
 
 def get_nearest_neighbour(queries, prototypes):
@@ -384,10 +582,6 @@ def get_nearest_neighbour(queries, prototypes):
 
     distances = get_distances(queries, prototypes)
     pred = np.argmin(distances, axis=1)
-<<<<<<< HEAD
-#     print(f"actual predictions: {pred}")
-=======
->>>>>>> 96554fd1047158f498572e8880c3d45fa237e1d2
     
     return pred ## (batch_size,) (categorical)
     #return np.eye(prototypes.shape[0])[pred] ## one-hot

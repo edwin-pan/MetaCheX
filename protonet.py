@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import argparse
-import wandb
-from wandb.keras import WandbCallback
+# import wandb
+# from wandb.keras import WandbCallback
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -42,7 +42,7 @@ def train(num_epochs=15, checkpoint_path="training_progress_protonet/cp_best.ckp
                 epochs=num_epochs,
                 steps_per_epoch=dataset.num_meta_train_episodes, 
                 validation_steps=100, 
-                callbacks=[cp_callback, WandbCallback()]
+                callbacks=[cp_callback] #, WandbCallback()]
                 )
 
     with open(os.path.join(checkpoint_dir, 'trainHistoryDict'), 'wb') as file_pi:
@@ -73,19 +73,45 @@ def compile():
 
 def eval():
     loss_fn = Losses(num_classes=dataset.n_test, num_samples_per_class=dataset.k_test, num_query=dataset.n_test_query)
+    
     chexnet_encoder.compile(loss=loss_fn.proto_loss(),
                             metrics=[proto_acc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query), 
-                                     proto_sup_acc_outer(num_classes=dataset.n_test, 
+                                     proto_acc_covid_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
-                                              num_sup=dataset.n*dataset.k), 
+                                              num_query=dataset.n_test_query), 
+                                     proto_acc_tb_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query), 
+                                     proto_acc_covid_tb_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query), 
                                      proto_mean_auroc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query),
-                                    proto_mean_f1_outer(num_classes=dataset.n_test, 
+                                     proto_mean_auroc_covid_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
-                                              num_query=dataset.n_test_query)],
+                                              num_query=dataset.n_test_query),
+                                     proto_mean_auroc_tb_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+#                                      proto_mean_auroc_covid_tb_outer(num_classes=dataset.n_test, 
+#                                               num_samples_per_class=dataset.k_test, 
+#                                               num_query=dataset.n_test_query),
+                                     proto_mean_f1_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+                                     proto_mean_f1_covid_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+                                     proto_mean_f1_tb_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+#                                      proto_mean_f1_covid_tb_outer(num_classes=dataset.n_test, 
+#                                               num_samples_per_class=dataset.k_test, 
+#                                               num_query=dataset.n_test_query)
+                                    ],
                             run_eagerly=True) 
 
     chexnet_encoder.evaluate(dataset.test_ds, steps=dataset.num_meta_test_episodes)
@@ -101,7 +127,7 @@ def load_model():
 
 if __name__ == '__main__':
     args = parse_args()
-    wandb.init(project="protonet-baby-1", entity="edwinpan")
+#     wandb.init(project="protonet-baby-1", entity="edwinpan")
 
     # os.environ["CUDA_VISIBLE_DEVICES"]=""
     tf.test.is_gpu_available()
@@ -111,13 +137,12 @@ if __name__ == '__main__':
     # Instantiate dataset
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=3, k=10, n_query=5, 
                               n_test=3, k_test=10, n_test_query=5, 
-                                  num_meta_train_episodes=100, num_meta_val_episodes=100, num_meta_test_episodes=100)
-#     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
+                                  num_meta_train_episodes=100, num_meta_val_episodes=100, num_meta_test_episodes=1000)
     
     # Load CheXNet
     chexnet_encoder = load_model()
     
-    print(chexnet_encoder.summary())
+#     print(chexnet_encoder.summary())
     
     # Compile
     compile()
@@ -139,15 +164,6 @@ if __name__ == '__main__':
         print("[INFO] Evaluating performance")
         eval() ## protoloss, proto_acc, proto_mean_auroc
         
-#         y_test_true = eval_dataset.test_ds.get_y_true() 
-#         y_test_embeddings = chexnet_encoder.predict(eval_dataset.test_ds, verbose=1)
-#         y_pred = nn.get_soft_predictions(y_test_embeddings)
-        
-#         dir_path = os.path.dirname(args.ckpt_save_path)
-#         mean_auroc(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
-#         mean_f1(y_test_true, y_test_pred, eval_dataset, eval=True, dir_path=dir_path)
-#         average_precision(y_test_true, y_test_pred, eval_dataset, dir_path=dir_path)
-
     # Generate tSNE
     if args.tsne:
         print("[INFO] Generating tSNE plots")
