@@ -102,13 +102,41 @@ def eval():
                             metrics=[proto_acc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query), 
+                                     proto_acc_covid_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query), 
+                                     proto_acc_tb_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query), 
+                                     proto_acc_covid_tb_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query), 
                                      proto_mean_auroc_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
                                               num_query=dataset.n_test_query),
-                                    proto_mean_f1_outer(num_classes=dataset.n_test, 
+                                     proto_mean_auroc_covid_outer(num_classes=dataset.n_test, 
                                               num_samples_per_class=dataset.k_test, 
-                                              num_query=dataset.n_test_query)],
-                            run_eagerly=True)
+                                              num_query=dataset.n_test_query),
+                                     proto_mean_auroc_tb_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+#                                      proto_mean_auroc_covid_tb_outer(num_classes=dataset.n_test, 
+#                                               num_samples_per_class=dataset.k_test, 
+#                                               num_query=dataset.n_test_query),
+                                     proto_mean_f1_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+                                     proto_mean_f1_covid_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+                                     proto_mean_f1_tb_outer(num_classes=dataset.n_test, 
+                                              num_samples_per_class=dataset.k_test, 
+                                              num_query=dataset.n_test_query),
+#                                      proto_mean_f1_covid_tb_outer(num_classes=dataset.n_test, 
+#                                               num_samples_per_class=dataset.k_test, 
+#                                               num_query=dataset.n_test_query)
+                                    ],
+                            run_eagerly=True) 
 
     chexnet_encoder.evaluate(dataset.test_ds, steps=dataset.num_meta_test_episodes)
 
@@ -132,7 +160,7 @@ if __name__ == '__main__':
     # Instantiate dataset
     dataset = MetaChexDataset(multiclass=True, protonet=True, batch_size=1, n=3, k=10, n_query=5, 
                               n_test=3, k_test=10, n_test_query=5,
-                              num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=100,
+                              num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=1000,
                               )
 
     # Load CheXNet
