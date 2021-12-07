@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
     parser.add_argument('-c', '--ckpt_save_path', default='training_progress_protonet/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
-    parser.add_argument('-n', '--num_epochs', type=int, default=15, help='Number of epochs to train for')
+    parser.add_argument('-n', '--num_epochs', type=int, default=150, help='Number of epochs to train for')
     return parser.parse_args()
 
 
@@ -33,15 +33,15 @@ def train(num_epochs=15, checkpoint_path="training_progress_protonet/cp_best.ckp
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                     save_weights_only=True,
                                                     verbose=1,
-                                                    monitor='val_loss',
-                                                    mode='min',
+                                                    monitor='val_proto_acc',
+                                                    mode='max',
                                                     save_best_only=True)
 
     hist = chexnet_encoder.fit(dataset.train_ds,
                 validation_data=dataset.val_ds,
                 epochs=num_epochs,
                 steps_per_epoch=dataset.num_meta_train_episodes, 
-                validation_steps=1, 
+                validation_steps=100, 
                 callbacks=[cp_callback, WandbCallback()]
                 )
 
@@ -101,7 +101,7 @@ def load_model():
 
 if __name__ == '__main__':
     args = parse_args()
-    wandb.init(project="protonet-baby", entity="edwinpan")
+    wandb.init(project="protonet-baby-1", entity="edwinpan")
 
     # os.environ["CUDA_VISIBLE_DEVICES"]=""
     tf.test.is_gpu_available()
@@ -110,8 +110,8 @@ if __name__ == '__main__':
 
     # Instantiate dataset
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=3, k=10, n_query=5, 
-                              n_test=5, k_test=3, n_test_query=5, 
-                                  num_meta_train_episodes=1000, num_meta_val_episodes=10, num_meta_test_episodes=10)
+                              n_test=3, k_test=10, n_test_query=5, 
+                                  num_meta_train_episodes=100, num_meta_val_episodes=100, num_meta_test_episodes=100)
 #     eval_dataset = MetaChexDataset(multiclass=True, batch_size=32)
     
     # Load CheXNet
