@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import argparse
+import wandb
+from wandb.keras import WandbCallback
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -21,8 +23,8 @@ def parse_args():
     parser.add_argument('-e', '--evaluate', action='store_true', help='Evaluate model performance')
     parser.add_argument('-c', '--ckpt_save_path', default='training_progress_protonet_supcon/cp_best.ckpt')
     parser.add_argument('-p', '--pretrained', default=None, help='Path to pretrained weights, if desired')
-    parser.add_argument('-n1', '--num_epochs_stage_1', type=int, default=15, help='Number of epochs to train stage 1 for')
-    parser.add_argument('-n2', '--num_epochs_stage_2', type=int, default=15, help='Number of epochs to train stage 2 for')
+    parser.add_argument('-n1', '--num_epochs_stage_1', type=int, default=30, help='Number of epochs to train stage 1 for')
+    parser.add_argument('-n2', '--num_epochs_stage_2', type=int, default=56, help='Number of epochs to train stage 2 for')
     parser.add_argument('-t2', '--train_stage2', action='store_true', help='Whether to train stage 2 (after loading weights)')
     return parser.parse_args()
 
@@ -33,6 +35,7 @@ def compile_stage(stage_num=1):
 
         chexnet_encoder.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                                 loss=loss_fn.supcon_label_loss(proto=True),
+                                loss_weights=100,
                                 run_eagerly=True)
     else:
         loss_fn = Losses(num_classes=dataset.n, num_samples_per_class=dataset.k, num_query=dataset.n_query)
@@ -54,25 +57,38 @@ def compile_stage(stage_num=1):
 def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_protonet_supcon"):
     # Create a callback that saves the model's weights
     if stage_num == 1:
-        checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best.ckpt")
+        checkpoint_path = os.path.join(checkpoint_dir, "stage1_cp_best_{epoch:02d}.ckpt")
         hist_dict_name = 'trainStage1HistoryDict'
+        cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                        save_weights_only=True,
+                                                        verbose=1,
+                                                        monitor='val_loss',
+                                                        mode='min',
+                                                        save_best_only=False
+                                                        )
+        hist = chexnet_encoder.fit(dataset.train_ds,
+            epochs=num_epochs,
+            validation_data=dataset.val_ds,                       
+            callbacks=[cp_callback]
+            )
     else:
+        wandb.init(project="protonet-baby-1", entity="edwinpan")
         checkpoint_path = os.path.join(checkpoint_dir, "stage2_cp_best.ckpt")
         hist_dict_name = 'trainStage2HistoryDict'
-        
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
-                                                     save_weights_only=True,
-                                                     verbose=1,
-                                                     monitor='val_loss',
-                                                     mode='min',
-                                                     save_best_only=True
-                                                    )
+        cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                        save_weights_only=True,
+                                                        verbose=1,
+                                                        monitor='val_proto_acc',
+                                                        mode='max',
+                                                        save_best_only=True)
+
+
     
-    hist = chexnet_encoder.fit(dataset.train_ds,
-        epochs=num_epochs,
-        validation_data=dataset.val_ds,                       
-        callbacks=[cp_callback]
-        )
+        hist = chexnet_encoder.fit(dataset.train_ds,
+            epochs=num_epochs,
+            validation_data=dataset.val_ds,                       
+            callbacks=[cp_callback, WandbCallback()]
+            )
 
     with open(os.path.join(checkpoint_dir, hist_dict_name), 'wb') as file_pi:
             pickle.dump(hist.history, file_pi)
@@ -106,6 +122,7 @@ def load_model():
 
 
 if __name__ == '__main__':
+
     args = parse_args()
     # os.environ["CUDA_VISIBLE_DEVICES"]=""
     tf.test.is_gpu_available()
@@ -114,7 +131,7 @@ if __name__ == '__main__':
 
     # Instantiate dataset
     dataset = MetaChexDataset(multiclass=True, protonet=True, batch_size=1, n=3, k=10, n_query=5, 
-                              n_test=5, k_test=3, n_test_query=5,
+                              n_test=3, k_test=10, n_test_query=5,
                               num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=100,
                               )
 
