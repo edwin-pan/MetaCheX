@@ -14,6 +14,7 @@ def supcon_label_loss_inner(labels, features):
     loss.shape (batch_size, )
     """
     features = tf.expand_dims(features, axis=1)
+#     print(f"features.shape: {features.shape} \t labels.shape: {labels.shape}")
     loss = contrastive_loss(features, labels)
     return loss
 
@@ -84,10 +85,10 @@ class Losses():
     def supcon_label_loss_proto(self, labels, features):
         support_labels = labels[:self.num_classes * self.num_samples_per_class, 0]
         query_labels = labels[-self.num_query:, 0]
-        labels = np.concatenate((support_labels, query_labels))
+        labels = tf.concat([support_labels, query_labels], 0)
+        labels = tf.one_hot(labels, self.num_classes)
 
-        labels = np.eye(self.num_classes)[labels]
-
+#         print(f"labels.shape: {labels.shape}")
         return supcon_label_loss_inner(labels, features)
    
     
@@ -104,7 +105,7 @@ class Losses():
         
         support_labels = labels[:self.num_classes * self.num_samples_per_class, 1]
         query_labels = labels[-self.num_query:, 1]
-        labels = np.concatenate((support_labels, query_labels))
+        labels = tf.concat([support_labels, query_labels], 0)
 
         return self.class_contrastive_loss(labels, features, proto=True)
 
@@ -202,7 +203,11 @@ class Losses():
     
     def proto_and_supcon_loss(self):
         def proto_and_supcon_loss_inner(labels, features):
-            return self.supcon_label_loss_proto(labels, features) + self.proto_loss_inner(labels, features)
+            supcon_loss = self.supcon_label_loss_proto(labels, features)[-self.num_query:]
+            proto_loss = self.proto_loss_inner(labels, features)
+            
+#             print(f"supcon_loss.shape: {supcon_loss.shape} \t proto_loss.shape: {proto_loss.shape}")
+            return supcon_loss + proto_loss
         
         return proto_and_supcon_loss_inner
     
