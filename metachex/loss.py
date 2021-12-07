@@ -97,9 +97,9 @@ class Losses():
         features (ie the z's): [batch_size, embedding_dim]
         labels (ie, the y's): [batch_size, num_labels], where labels are one-hot encoded
         """
-        
-        return self.supcon_label_loss_proto if proto else supcon_label_loss_inner
-    
+        def supcon_label_loss_inner2(labels, features):
+            return self.supcon_label_loss_proto(labels, features) if proto else supcon_label_loss_inner(labels, features)
+        return supcon_label_loss_inner2    
     
     def supcon_class_loss_proto(self, labels, features):
         

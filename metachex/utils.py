@@ -384,10 +384,6 @@ def get_nearest_neighbour(queries, prototypes):
 
     distances = get_distances(queries, prototypes)
     pred = np.argmin(distances, axis=1)
-<<<<<<< HEAD
-#     print(f"actual predictions: {pred}")
-=======
->>>>>>> 96554fd1047158f498572e8880c3d45fa237e1d2
     
     return pred ## (batch_size,) (categorical)
     #return np.eye(prototypes.shape[0])[pred] ## one-hot
