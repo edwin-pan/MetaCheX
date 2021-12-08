@@ -32,7 +32,7 @@ class MetaChexDataset():
         self.data_path = os.path.join(PATH_TO_DATA_FOLDER, 'data.pkl')
         
         # Datasplit path
-        self.datasplit_path = os.path.join(PATH_TO_DATA_FOLDER, 'datasplit.pkl')
+        self.datasplit_path = os.path.join(PATH_TO_DATA_FOLDER, 'my_datasplit.pkl')
         
         ## Child to parent map and num_parents_list path
         self.child_to_parent_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'childParent.pkl')
@@ -51,20 +51,10 @@ class MetaChexDataset():
         df_combos_exclude = df_combo_nums[df_combo_nums['count'] < SAMPLE_MIN].reset_index().rename(columns={'index': 'label_str'})
         self.df_condensed = self.df[~self.df['label_str'].isin(df_combos_exclude['label_str'])].reset_index(drop=True)
         self.unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums = self.get_data_stats(self.df_condensed)
-#         print("Generated labels: ", len(list(self.unique_labels_dict.keys())))
         self.df_condensed = self.generate_labels(self.df_condensed, 'data_condensed.pkl')
         
         if multiclass or protonet:
             self.df_parents, self.df_covid_tb, self.df_children = self.subsample_data()
-#             print(self.df_parents['label_str'].drop_duplicates().values)
-#             print(self.df_covid_tb['label_str'].drop_duplicates().values)
-#             print(len(self.df_children['label_str'].drop_duplicates()))
-#             print(self.df_children['label_str'].drop_duplicates()[:10])
-#             print("[INFO] get child-to-parents mapping")
-#             ## list of multiclass labels corresponding to multitask index
-#             self.parent_multiclass_labels = np.ones((self.num_classes_multitask + 1,)) * -1  ## +1 for 'No Finding' label
-#             self.get_child_to_parent_mapping()
-#             self.get_num_parents_to_count_df()
 
         print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
@@ -89,7 +79,7 @@ class MetaChexDataset():
                 [self.train_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_condensed, 
                                                                                      shuffle_train=shuffle_train)
             else:
-                self.unique_labels = self.df_combined.sort_values(by=['label_num_multi'])['label_str'].values
+                self.df_combined = self.df_parents.append(self.df_covid_tb).reset_index(drop=True)
                 [self.train_ds, self.val_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_combined,
                                                                                                   shuffle_train=shuffle_train,
                                                                                                   baseline=baseline)
@@ -135,7 +125,7 @@ class MetaChexDataset():
             ds = ProtoNetImageSequence(data_splits[i], steps=steps, num_classes=num_classes, 
                                        num_samples_per_class=num_samples_per_class, 
                                        num_queries=num_queries, batch_size=self.batch_size, 
-                                       shuffle_on_epoch_end=shuffle_on_epoch_end, eval=eval)
+                                       shuffle_on_epoch_end=shuffle_on_epoch_end)
             
             datasets.append(ds)
         return datasets
@@ -667,7 +657,7 @@ class MetaChexDataset():
         df_children = df_children.iloc[np.unique(child_row_indices_we_want)]
         
         ## Labels
-        self.unique_labels = df_parents.sort_values(by=['label_num_multi'])['label_str'].values
+        self.unique_labels = df_parents.sort_values(by=['label_num_multi'])['label_str'].drop_duplicates().values
         
         ## Separate df_parents into covid_tb and everything else
         df_covid_tb = df_parents[df_parents['label_str'].isin(['COVID-19', 'Tuberculosis'])]
