@@ -252,11 +252,16 @@ def mean_f1(y_true, y_pred, dataset=None, eval=False, dir_path="."):
         f1s = []
         for i in range(y_true.shape[1]):
             try:
+                num = np.sum(y_true[:, i])
+
+                if num == 0:
+                    raise ZeroDivisionError
+
                 f1 = f1_score(y_true[:, i], y_pred[:, i])
                 f1s.append(f1)
-            except RuntimeWarning:
-                print(f'{i} not tested on')
-                f1 = 0
+            except ZeroDivisionError:
+                print(f'{dataset.unique_labels[i]} not tested on')
+                f1 = 'N/A'
             if eval:
                 f.write(f"{dataset.unique_labels[i]}: {f1}\n")
         mean_f1 = np.mean(f1s)

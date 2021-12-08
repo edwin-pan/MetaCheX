@@ -106,7 +106,7 @@ if __name__ == '__main__':
         dir_path = os.path.dirname(eval_path)
         mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
         mean_f1(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
-        average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
+#         average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
 
     # Generate tSNE
     if args.tsne:
