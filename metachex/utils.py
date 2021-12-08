@@ -50,7 +50,7 @@ def baby_conv(input_obj):
     # model.add(tf.keras.layers.Dense(1)) # this is not used
     return model
 
-def load_chexnet(output_dim, input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3), multiclass=False, embedding_dim=128):
+def load_chexnet(output_dim, input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3), multiclass=False, embedding_dim=128, baseline=False):
     """
     output_dim: dimension of output
     multiclass: whether or not prediction task is multiclass (vs. binary multitask)
@@ -61,13 +61,14 @@ def load_chexnet(output_dim, input_shape=(IMAGE_SIZE, IMAGE_SIZE, 3), multiclass
 #     x = base_model_old.layers[-2].output ## remove old prediction layer
     
     img_input = tf.keras.layers.Input(shape=input_shape)
-    # base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights='imagenet',  # use imagenet weights
-    #                                                         input_tensor=img_input, pooling='avg')
+    if baseline:
+        base_model = tf.keras.applications.densenet.DenseNet121(include_top=False, weights='imagenet',  # use imagenet weights
+                                                            input_tensor=img_input, pooling='avg')
 
     # base_model = tf.keras.applications.resnet50.ResNet50(include_top=False, weights='imagenet', 
     #                                                         input_tensor=img_input, pooling='avg')
-
-    base_model = baby_conv(img_input)
+    else:
+        base_model = baby_conv(img_input)
 
     x = base_model.output
     
@@ -617,9 +618,10 @@ def generate_metric_plots(filepath):
         plt.savefig(fname)
         plt.clf() 
         
-def process_tSNE(features, learning_rate=10, perplexity=20):
+def process_tSNE(features, learning_rate=10, perplexity=20, n_iter=1000, early_exaggeration=20):
     """ Computes tNSE embedding as array"""
-    tsne = manifold.TSNE(n_components=2, init="random", learning_rate=learning_rate, random_state=0, perplexity=perplexity)
+    tsne = manifold.TSNE(n_components=2, init="random", learning_rate=learning_rate, random_state=0, 
+                         perplexity=perplexity, n_iter=n_iter, early_exaggeration=early_exaggeration)
     encoded = tsne.fit_transform(features)
     return encoded
 

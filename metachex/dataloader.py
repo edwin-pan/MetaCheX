@@ -21,11 +21,15 @@ import pickle5 as pickle
 
 np.random.seed(271)
 
-TSNE_PARENT_CLASSES = ['Atelectasis', 'Effusion', 'Infiltration']
-TSNE_CHILD_CLASSES = ['Effusion|Infiltration', 'Atelectasis|Infiltration', 
-                      'Atelectasis|Effusion', 'Atelectasis|Effusion|Infiltration']
+# TSNE_PARENT_CLASSES = ['Atelectasis', 'Effusion', 'Infiltration']
+TSNE_PARENT_CLASSES = ['COVID-19', 'Pneumonia']
+# TSNE_CHILD_CLASSES = ['Effusion|Infiltration', 'Atelectasis|Infiltration', 
+#                       'Atelectasis|Effusion', 'Atelectasis|Effusion|Infiltration']
+TSNE_CHILD_CLASSES = ['COVID-19|Pneumonia']
 
-TSNE_DISTANCE_CLASSES = ['COVID-19', 'Pneumonia', 'Tuberculosis', 'Mass', 'No Finding']
+# TSNE_DISTANCE_CLASSES = ['COVID-19', 'Pneumonia', 'Tuberculosis', 'Mass', 'No Finding']
+# TSNE_DISTANCE_CLASSES = ['Pneumonia', 'Hernia', 'Lung_Opacity'] # this works pretty well 
+TSNE_DISTANCE_CLASSES = ['Pneumonia', 'COVID-19', 'Edema'] # this works pretty well  
 
 
 

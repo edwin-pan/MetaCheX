@@ -3,8 +3,8 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import argparse
-import wandb
-from wandb.keras import WandbCallback
+# import wandb
+# from wandb.keras import WandbCallback
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -72,7 +72,7 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_pr
             callbacks=[cp_callback]
             )
     else:
-        wandb.init(project="protonet-baby-1", entity="edwinpan")
+#         wandb.init(project="protonet-baby-1", entity="edwinpan")
         checkpoint_path = os.path.join(checkpoint_dir, "stage2_cp_best.ckpt")
         hist_dict_name = 'trainStage2HistoryDict'
         cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
@@ -87,7 +87,7 @@ def train_stage(num_epochs=15, stage_num=1, checkpoint_dir="training_progress_pr
         hist = chexnet_encoder.fit(dataset.train_ds,
             epochs=num_epochs,
             validation_data=dataset.val_ds,                       
-            callbacks=[cp_callback, WandbCallback()]
+            callbacks=[cp_callback] #, WandbCallback()]
             )
 
     with open(os.path.join(checkpoint_dir, hist_dict_name), 'wb') as file_pi:
@@ -160,8 +160,8 @@ if __name__ == '__main__':
     # Instantiate dataset
     dataset = MetaChexDataset(multiclass=True, protonet=True, batch_size=1, n=3, k=10, n_query=5, 
                               n_test=3, k_test=10, n_test_query=5,
-                              num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=1000,
-                              max_num_vis_samples=30)
+                              num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=10,
+                              max_num_vis_samples=100)
 
     # Load CheXNet
     chexnet_encoder = load_model()
@@ -213,7 +213,7 @@ if __name__ == '__main__':
         # generating embeddings can take some time. Load if possible
         
         ## TSNE 1: Parents and their children
-        for i in range(2):
+        for i in [1]: #range(2): 
             if os.path.exists(embedding_save_paths[i]):
                 print(f"[INFO] Embeddings {i + 1} already processed. Loading from {embedding_save_paths[i]}")
                 with open(embedding_save_paths[i], 'rb') as file:
@@ -226,6 +226,7 @@ if __name__ == '__main__':
 
             tsne_labels = tsne_datasets[i].get_y_true()
             print(tsne_labels.shape)
-            tsne_feats = process_tSNE(embeddings)
+            tsne_feats = process_tSNE(embeddings, perplexity=30, n_iter=10000, learning_rate=500,
+                                     early_exaggeration=12)
 
             plot_tsne(tsne_feats, tsne_labels, save_path=tsne_save_paths[i])

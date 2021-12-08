@@ -138,7 +138,7 @@ if __name__ == '__main__':
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=3, k=10, n_query=5, 
                               n_test=3, k_test=10, n_test_query=5, 
                               num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=10,
-                              max_num_vis_samples=30)
+                              max_num_vis_samples=100)
     
     # Load CheXNet
     chexnet_encoder = load_model()
@@ -176,7 +176,7 @@ if __name__ == '__main__':
         # generating embeddings can take some time. Load if possible
         
         ## TSNE 1: Parents and their children
-        for i in range(2):
+        for i in [0]: #range(2):
             if os.path.exists(embedding_save_paths[i]):
                 print(f"[INFO] Embeddings {i + 1} already processed. Loading from {embedding_save_paths[i]}")
                 with open(embedding_save_paths[i], 'rb') as file:
@@ -188,6 +188,7 @@ if __name__ == '__main__':
                     pickle.dump(embeddings, file, protocol=pickle.HIGHEST_PROTOCOL)
 
             tsne_labels = tsne_datasets[i].get_y_true()
-            tsne_feats = process_tSNE(embeddings)
+            tsne_feats = process_tSNE(embeddings, perplexity=30, n_iter=10000, learning_rate=500,
+                                     early_exaggeration=12)
 
             plot_tsne(tsne_feats, tsne_labels, save_path=tsne_save_paths[i])

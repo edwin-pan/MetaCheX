@@ -70,13 +70,13 @@ if __name__ == '__main__':
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
     # Instantiate dataset
-    dataset = MetaChexDataset(multiclass=True, baseline=True, batch_size=32, max_num_vis_samples=1)
+    dataset = MetaChexDataset(multiclass=True, baseline=True, batch_size=32, max_num_vis_samples=100)
     
     # Grab training dataset
     train_ds = dataset.train_ds
 
     # Load CheXNet
-    chexnet = load_chexnet(dataset.num_classes_multiclass, multiclass=True)
+    chexnet = load_chexnet(dataset.num_classes_multiclass, multiclass=True, embedding_dim=128, baseline=True)
     chexnet.trainable = True
     
     print(chexnet.summary())
@@ -118,7 +118,6 @@ if __name__ == '__main__':
         tsne_save_paths = [os.path.join(record_dir, 'tsne1.png'), os.path.join(record_dir, 'tsne2.png')]
         # generating embeddings can take some time. Load if possible
         
-        ## TSNE 1: Parents and their children
         for i in range(2):
             if os.path.exists(embedding_save_paths[i]):
                 print(f"[INFO] Embeddings {i + 1} already processed. Loading from {embedding_save_paths[i]}")
@@ -132,6 +131,7 @@ if __name__ == '__main__':
 
             tsne_labels = tsne_datasets[i].get_y_true()
             print(tsne_labels.shape)
-            tsne_feats = process_tSNE(embeddings)
+            tsne_feats = process_tSNE(embeddings, perplexity=30, n_iter=10000, learning_rate=300,
+                                     early_exaggeration=12)
 
             plot_tsne(tsne_feats, tsne_labels, save_path=tsne_save_paths[i])
