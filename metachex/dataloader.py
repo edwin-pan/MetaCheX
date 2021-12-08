@@ -21,10 +21,19 @@ import pickle5 as pickle
 
 np.random.seed(271)
 
+TSNE_PARENT_CLASSES = ['Atelectasis', 'Effusion', 'Infiltration']
+TSNE_CHILD_CLASSES = ['Effusion|Infiltration', 'Atelectasis|Infiltration', 
+                      'Atelectasis|Effusion', 'Atelectasis|Effusion|Infiltration']
+
+TSNE_DISTANCE_CLASSES = ['COVID-19', 'Pneumonia', 'Tuberculosis', 'Mass', 'No Finding']
+
+
+
 class MetaChexDataset():
     def __init__(self, shuffle_train=True, multiclass=False, baseline=False, protonet=False, batch_size=8, 
                  n=5, k=3, n_query=5, n_test=5, k_test=3, n_test_query=5,
-                 num_meta_train_episodes=100, num_meta_val_episodes=1, num_meta_test_episodes=1000):
+                 num_meta_train_episodes=100, num_meta_val_episodes=1, num_meta_test_episodes=1000,
+                 max_num_vis_samples=100):
         self.batch_size = batch_size
         self.multiclass = multiclass
         
@@ -32,12 +41,14 @@ class MetaChexDataset():
         self.data_path = os.path.join(PATH_TO_DATA_FOLDER, 'data.pkl')
         
         # Datasplit path
-        self.datasplit_path = os.path.join(PATH_TO_DATA_FOLDER, 'my_datasplit.pkl')
+        self.datasplit_path = os.path.join(PATH_TO_DATA_FOLDER, 'datasplit.pkl')
         
         ## Child to parent map and num_parents_list path
         self.child_to_parent_map_path = os.path.join(PATH_TO_DATA_FOLDER, 'childParent.pkl')
         self.num_parents_list_path = os.path.join(PATH_TO_DATA_FOLDER, 'num_parents_list.pkl')
         self.parent_multiclass_labels_path = os.path.join(PATH_TO_DATA_FOLDER, 'parent_multiclass_labels.npy')
+        self.tsne1_ds_path = os.path.join(PATH_TO_DATA_FOLDER, 'tsne1_ds.pkl')
+        self.tsne2_ds_path = os.path.join(PATH_TO_DATA_FOLDER, 'tsne2_ds.pkl')
         
         
         # Pre-processing
@@ -55,6 +66,8 @@ class MetaChexDataset():
         
         if multiclass or protonet:
             self.df_parents, self.df_covid_tb, self.df_children = self.subsample_data()
+            
+            self.tsne1_ds, self.tsne2_ds = self.get_tsne_generators(max_num_vis_samples)
 
         print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
@@ -90,6 +103,75 @@ class MetaChexDataset():
         print('[INFO] initialized')
         return
 
+    
+    def get_tsne_generators(self, max_num_samples_per_class=100):
+        """
+        Returns image sequences corresponding to the two main relationships we want to visualize
+        
+        1. Parents and their children: Atelectasis, Effusion, Infiltration, all combos
+        2. Similar vs. distant classes: COVID-19, Pneumonia, TB (“similar”); Mass (“distant”); No Finding (bonus)
+        """
+        
+        tsne1_ds, tsne2_ds = None, None
+        
+        ## Load from pickle if exist
+        if os.path.exists(self.tsne1_ds_path):
+            with open(self.tsne1_ds_path, 'rb') as file:
+                tsne1_ds = pickle.load(file)
+        
+        if os.path.exists(self.tsne2_ds_path):
+            with open(self.tsne2_ds_path, 'rb') as file:
+                tsne2_ds = pickle.load(file)
+        
+        if tsne1_ds is not None and tsne2_ds is not None:
+            return tsne1_ds, tsne2_ds
+        
+        ## 1. Parents + their children
+        self.df_combined = self.df_parents.append(self.df_covid_tb).reset_index(drop=True)
+        print(self.df_combined['label_str'].drop_duplicates().values)
+        ## Get parents
+        df_parents = pd.DataFrame(columns=self.df_combined.columns)
+        for parent in TSNE_PARENT_CLASSES:
+            df_class = self.df_combined[self.df_combined['label_str'] == parent] # Get class rows
+            df_class = df_class.sample(n=min(max_num_samples_per_class, len(df_class))) # Sample
+            df_parents = df_parents.append(df_class) # Append
+        
+        ## Get children
+        df_children = pd.DataFrame(columns=self.df_children.columns)
+        for child in TSNE_CHILD_CLASSES:
+            df_class = self.df_children[self.df_children['label_str'] == child] # Get class rows
+            df_class = df_class.sample(n=min(max_num_samples_per_class, len(df_class))) # Sample
+            df_children = df_children.append(df_class) # Append
+        
+        ## Combine parents + children
+        df_parents_and_children = df_parents.append(df_children).reset_index(drop=True)
+        
+        ## 2. Similar vs. distant
+        df_distance = pd.DataFrame(columns=self.df_combined.columns)
+        for label in TSNE_DISTANCE_CLASSES:
+            df_class = self.df_combined[self.df_combined['label_str'] == label] # Get class rows
+            df_class = df_class.sample(n=min(max_num_samples_per_class, len(df_class))) # Sample
+            df_distance = df_distance.append(df_class) # Append
+        
+        df_distance = df_distance.reset_index(drop=True)
+        print(df_distance['label_str'])
+        
+        ## Return image sequences
+        tsne1_ds = ImageSequence(df=df_parents_and_children, shuffle_on_epoch_end=False, 
+                               num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size,
+                                tsne=True)
+        tsne2_ds = ImageSequence(df=df_distance, shuffle_on_epoch_end=False, 
+                               num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size,
+                                tsne=True)
+        
+        ## Dump to pickle
+        with open(self.tsne1_ds_path, 'wb') as file:
+            pickle.dump(tsne1_ds, file, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        with open(self.tsne2_ds_path, 'wb') as file:
+            pickle.dump(tsne2_ds, file, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        return tsne1_ds, tsne2_ds
     
     def get_protonet_generator_splits2(self, df, df_held_out, n, k, n_query, n_test, k_test, n_test_query, 
                                       split=(0.7, 0.1, 0.2), shuffle_train=True):
@@ -652,7 +734,7 @@ class MetaChexDataset():
         print(label_multitask_arr.shape)
         child_row_indices, child_multitask_indices = np.where(label_multitask_arr == 1)
 
-        child_row_indices_we_want = child_multitask_indices[np.in1d(child_multitask_indices, parent_multitask_indices)]
+        child_row_indices_we_want = child_row_indices[np.in1d(child_multitask_indices, parent_multitask_indices)]
         
         df_children = df_children.iloc[np.unique(child_row_indices_we_want)]
         

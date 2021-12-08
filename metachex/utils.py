@@ -623,33 +623,33 @@ def process_tSNE(features, learning_rate=10, perplexity=20):
     encoded = tsne.fit_transform(features)
     return encoded
 
-def plot_tsne(tsne_features, tsne_labels_one_hot, 
-                              label_names=None, 
-                              num_subsample=None, 
-                              visualize_class_list=None, 
-                              plot_title='test', 
-                              save_path='test.png'):
+def plot_tsne(tsne_features, tsne_label_strs, plot_title='test', save_path='test.png'):
     """ Plots all given embeddings, but allows for plotting only some classes. """
-    tsne_labels = np.argmax(tsne_labels_one_hot, axis=-1)
-    num_classes = tsne_labels_one_hot.shape[-1]
-    num_samples = tsne_labels_one_hot.shape[0]
-
-    if visualize_class_list is not None:
-        # TODO: Visualize subset of classes
-        pass
-
+    
+    num_classes = np.unique(tsne_label_strs).shape[0]
+    num_samples = tsne_features.shape[0]
+    
+    tsne_labels_df = pd.DataFrame({'label_str': tsne_label_strs})
+    tsne_labels_df['label_num'] = tsne_labels_df.groupby(['label_str']).ngroup()
+    print(tsne_labels_df)
+    tsne_labels = tsne_labels_df['label_num'].values
+    
+    label_names = tsne_labels_df.sort_values(by=['label_num'])['label_str'].drop_duplicates().values
+    print(label_names)
+    
     if label_names is None:
         plt.figure()
         plt.scatter(tsne_features[...,0], tsne_features[...,1], c=tsne_labels, cmap=plt.cm.get_cmap('viridis', num_classes))
-        plt.title(plot_title)
+#         plt.title(plot_title)
         plt.colorbar(ticks=np.arange(num_classes))
         plt.tight_layout()
         plt.savefig(save_path)
     else:
         plt.figure()
-        plt.title(plot_title)
+#         plt.title(plot_title)
         ax = plt.subplot(111)
-        for i in range(num_classes):            
+        for i in range(num_classes): 
+#             print(label_names[i])
             scat = ax.scatter(
                 tsne_features[tsne_labels==i,0], tsne_features[tsne_labels==i,1], 
                 c=np.repeat(colormap(i, num_classes).reshape(-1,1), [tsne_features[tsne_labels==i,0].shape[0]]).reshape(4,-1).T,

@@ -137,7 +137,8 @@ if __name__ == '__main__':
     # Instantiate dataset
     dataset = MetaChexDataset(protonet=True, batch_size=1, n=3, k=10, n_query=5, 
                               n_test=3, k_test=10, n_test_query=5, 
-                                  num_meta_train_episodes=100, num_meta_val_episodes=100, num_meta_test_episodes=1000)
+                              num_meta_train_episodes=100, num_meta_val_episodes=20, num_meta_test_episodes=10,
+                              max_num_vis_samples=30)
     
     # Load CheXNet
     chexnet_encoder = load_model()
@@ -167,30 +168,26 @@ if __name__ == '__main__':
     # Generate tSNE
     if args.tsne:
         print("[INFO] Generating tSNE plots")
+        chexnet_embedder = chexnet_encoder
+        tsne_datasets = [dataset.tsne1_ds, dataset.tsne2_ds]
 
-        embedding_save_path = os.path.join(record_dir, 'embeddings.npy')
-        sampled_ds_save_path = os.path.join(record_dir, 'sampled_ds.pkl')
+        embedding_save_paths = [os.path.join(record_dir, 'embeddings1.pkl'), os.path.join(record_dir, 'embeddings2.pkl')]
+        tsne_save_paths = [os.path.join(record_dir, 'tsne1.png'), os.path.join(record_dir, 'tsne2.png')]
         # generating embeddings can take some time. Load if possible
-
-        if os.path.isfile(sampled_ds_save_path):
-            print(f"[INFO] Loading sampled dataset {sampled_ds_save_path}")
-            with open(sampled_ds_save_path, 'rb') as file:
-                sampled_ds = pickle.load(file)
-        else:
-            print(f"[INFO] Train ds sampling. Saving to {sampled_ds_save_path}")
-            sampled_ds = get_sampled_ds(eval_dataset.train_ds, multiclass=False, max_per_class=20)
-            with open(sampled_ds_save_path, 'wb') as file:
-                pickle.dump(sampled_ds, file)
-                
-        if os.path.isfile(embedding_save_path):
-            print(f"[INFO] Embeddings already processed. Loading from {embedding_save_path}")
-            training_embeddings = np.load(embedding_save_path)
-        else:
-            print(f"[INFO] Embeddings processing. Saving to {embedding_save_path}")
-            training_embeddings = chexnet_embedder.predict(sampled_ds, verbose=1)
-            np.save(embedding_save_path, training_embeddings)
         
-        tsne_feats = process_tSNE(training_embeddings)
-        tsne_labels = sampled_ds.get_y_true()
+        ## TSNE 1: Parents and their children
+        for i in range(2):
+            if os.path.exists(embedding_save_paths[i]):
+                print(f"[INFO] Embeddings {i + 1} already processed. Loading from {embedding_save_paths[i]}")
+                with open(embedding_save_paths[i], 'rb') as file:
+                    embeddings = pickle.load(file)
+            else:
+                print(f"[INFO] Embeddings {i + 1} processing. Saving to {embedding_save_paths[i]}")
+                embeddings = chexnet_embedder.predict(tsne_datasets[i], verbose=1)
+                with open(embedding_save_paths[i], 'wb') as file:
+                    pickle.dump(embeddings, file, protocol=pickle.HIGHEST_PROTOCOL)
 
-        plot_tsne(tsne_feats, tsne_labels, label_names=eval_dataset.unique_labels)
+            tsne_labels = tsne_datasets[i].get_y_true()
+            tsne_feats = process_tSNE(embeddings)
+
+            plot_tsne(tsne_feats, tsne_labels, save_path=tsne_save_paths[i])

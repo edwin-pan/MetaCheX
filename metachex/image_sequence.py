@@ -17,7 +17,7 @@ class ImageSequence(Sequence):
     def __init__(self, df, batch_size=8,
                  target_size=(224, 224), augmenter=None, verbose=0, steps=None,
                  shuffle_on_epoch_end=True, random_state=271, num_classes=18, multiclass=False,
-                 parents_only=False):
+                 parents_only=False, tsne=False):
         """
         :param df: dataframe of all the images for a specific split (train, val or test)
         :param batch_size: int
@@ -35,6 +35,7 @@ class ImageSequence(Sequence):
         self.num_classes = num_classes
         self.multiclass = multiclass
         self.parents_only = parents_only
+        self.tsne = tsne
         self.prepare_dataset()
         if steps is None:
             self.steps = int(np.ceil(len(self.x_path) / float(self.batch_size)))
@@ -83,20 +84,26 @@ class ImageSequence(Sequence):
             You're trying run get_y_true() when generator option 'shuffle_on_epoch_end' is True.
             """)
         
-        end_idx = min(self.steps*self.batch_size, self.y.shape[0])
-        return self.y[:self.steps*self.batch_size, :]
+        if self.tsne:
+            return self.y
+        else:
+            end_idx = min(self.steps*self.batch_size, self.y.shape[0])
+            return self.y[:end_idx, :]
 
     def prepare_dataset(self):
         df = self.df.sample(frac=1., random_state=self.random_state)
         self.x_path = df['image_path']
         
-        if self.parents_only: ## this is just to get parent embeddings later on
-            self.y = np.eye(int(self.num_classes))[df['parent_id'].values.astype(int)]
-        elif self.multiclass:
-            self.y = np.eye(int(self.num_classes))[df['label_num_multi'].values.astype(int)]
+        if not self.tsne:
+            if self.parents_only: ## this is just to get parent embeddings later on
+                self.y = np.eye(int(self.num_classes))[df['parent_id'].values.astype(int)]
+            elif self.multiclass:
+                self.y = np.eye(int(self.num_classes))[df['label_num_multi'].values.astype(int)]
+            else:
+                self.y = np.array(df['label_multitask'].to_list())
+            print("self.y.shape: ", self.y.shape)
         else:
-            self.y = np.array(df['label_multitask'].to_list())
-        print("self.y.shape: ", self.y.shape)
+            self.y = df['label_str'].values
 
     def on_epoch_end(self):
         if self.shuffle:
@@ -108,7 +115,7 @@ class ProtoNetImageSequence(ImageSequence):
     
     def __init__(self, df, num_classes, num_samples_per_class, num_queries,
                  batch_size=1, target_size=(224, 224), verbose=0, steps=None, shuffle_on_epoch_end=True, 
-                 random_state=271, eval=False):
+                 random_state=271, eval=False, tsne=False):
         
         self.df = df
         self.num_classes = num_classes
@@ -121,6 +128,7 @@ class ProtoNetImageSequence(ImageSequence):
         self.random_state = random_state
         self.steps = steps
         self.eval = eval
+        self.tsne = tsne
         self.prepare_dataset()
         
         
@@ -137,8 +145,9 @@ class ProtoNetImageSequence(ImageSequence):
         support_labels = self.label_batches.reshape(self.steps, -1, 2) # (num_steps, n * k, 2)
         query_labels = self.query_label_batches # (num_steps, n_query, 2)
         query_masks = self.query_mask_batches # # (num_steps, n_query, 2)
-        
+
         return np.concatenate((support_labels, query_labels, query_masks), axis=1) # (num_steps, n * k + 2 * n_query, 2)
+        
         
     def __getitem__(self, idx):
         
