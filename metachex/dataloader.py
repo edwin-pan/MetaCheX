@@ -10,7 +10,6 @@ warnings.filterwarnings("error")
 from glob import glob
 
 from metachex.configs.config import *
-# from configs.config import *
 
 from PIL import Image
 import sklearn
@@ -20,18 +19,6 @@ from metachex.image_sequence import ImageSequence, ProtoNetImageSequence
 import pickle5 as pickle
 
 np.random.seed(271)
-
-# TSNE_PARENT_CLASSES = ['Atelectasis', 'Effusion', 'Infiltration']
-TSNE_PARENT_CLASSES = ['COVID-19', 'Pneumonia']
-# TSNE_CHILD_CLASSES = ['Effusion|Infiltration', 'Atelectasis|Infiltration', 
-#                       'Atelectasis|Effusion', 'Atelectasis|Effusion|Infiltration']
-TSNE_CHILD_CLASSES = ['COVID-19|Pneumonia']
-
-# TSNE_DISTANCE_CLASSES = ['COVID-19', 'Pneumonia', 'Tuberculosis', 'Mass', 'No Finding']
-TSNE_DISTANCE_CLASSES = ['Pneumonia', 'Hernia', 'Lung_Opacity'] # this works pretty well 
-# TSNE_DISTANCE_CLASSES = ['Pneumonia', 'COVID-19', 'Edema'] # this works pretty well  
-
-
 
 class MetaChexDataset():
     def __init__(self, shuffle_train=True, multiclass=False, baseline=False, protonet=False, batch_size=8, 
@@ -84,10 +71,6 @@ class MetaChexDataset():
                                                                                             n_test_query,
                                                                                             shuffle_train=shuffle_train)
             self.tsne1_ds, self.tsne2_ds = self.get_tsne_generators(max_num_vis_samples)
-#             [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits(self.df_condensed,
-#                                                                                             n, k, n_query, n_test, k_test,
-#                                                                                             n_test_query,
-#                                                                                             shuffle_train=shuffle_train)
             self.n, self.k, self.n_query = n, k, n_query
             self.n_test, self.k_test, self.n_test_query = n_test, k_test, n_test_query
         elif multiclass:
@@ -101,8 +84,8 @@ class MetaChexDataset():
                                                                                                   baseline=baseline)
                 self.tsne1_ds, self.tsne2_ds = self.get_tsne_generators(max_num_vis_samples)
         else:
-            [self.train_ds, self.val_ds, self.test_ds] = self.get_multitask_generator_splits(self.df_condensed, 
-                                                                                             shuffle_train=shuffle_train)
+            print('Must choose protonet or multiclass')
+            exit(1)
 
         print('[INFO] initialized')
         return
@@ -218,161 +201,6 @@ class MetaChexDataset():
             
             datasets.append(ds)
         return datasets
-    
-    
-    def get_protonet_generator_splits(self, df, n, k, n_query, n_test, k_test, n_test_query, 
-                                      split=(0.7, 0.1, 0.2), shuffle_train=True):
-        """
-        Get datasets for train, val and test (n-way, k-shot)
-        """
-        
-        ## Get labels for train, val, test
-        train_num = int(self.num_classes_multiclass * split[0])
-        val_num = int(self.num_classes_multiclass * split[1])
-        
-        unique_label_strs = df['label_str'].drop_duplicates().values
-        np.random_seed(271)
-        np.random.shuffle(unique_label_strs)
-        
-        train_label_strs = unique_label_strs[:train_num]
-        val_label_strs = unique_label_strs[train_num : train_num + val_num]
-        test_label_strs = unique_label_strs[train_num + val_num :]
-        
-        label_strs = [train_label_strs, val_label_strs, test_label_strs]
-        
-        ds_types = ['train', 'val', 'test']
-        
-        dfs = [df[df['label_str'].isin(lst)].reset_index(drop=True) for lst in label_strs]
-        
-        datasets = []
-        for i, ds_type in enumerate(ds_types):
-            shuffle_on_epoch_end = False
-            num_classes, num_samples_per_class, num_queries = n, k, n_query
-            if ds_type == 'train':
-                shuffle_on_epoch_end = True
-                steps = self.num_meta_train_episodes 
-            elif ds_type == 'test':
-                num_classes, num_samples_per_class, num_queries = n_test, k_test, n_test_query
-                steps = self.num_meta_test_episodes 
-                
-            else: # val
-                steps = 1 
-            
-            ds = ProtoNetImageSequence(dfs[i], steps=steps, num_classes=num_classes, 
-                                       num_samples_per_class=num_samples_per_class, 
-                                       num_queries=num_queries, batch_size=self.batch_size, 
-                                       shuffle_on_epoch_end=shuffle_on_epoch_end)
-            
-            datasets.append(ds)
-        return datasets
-    
-        
-    def get_num_parents_to_count_df(self):
-        
-        df = pd.DataFrame(columns=['num_parents', 'num_examples'])
-        
-        df['num_parents'] = np.unique(self.num_parents_list)
-        
-        counts = []
-        for num in df['num_parents'].values:
-            count = np.where(self.num_parents_list == num)[0].shape[0]
-            counts.append(count)
-            
-        df['num_examples'] = counts
-        
-        print(df)
-    
-    
-    def get_child_to_parent_mapping(self):
-        """
-        Get dict of child index to list of parent indices for all child classes
-        
-        returns: {multiclass_child_ind (0 to 328) : list of multitask parent indices (0 to 26)}
-        """
-        
-        ## load maps and lists
-        if os.path.isfile(self.child_to_parent_map_path) and os.path.isfile(self.parent_multiclass_labels_path): 
-            with open(self.child_to_parent_map_path, 'rb') as file:
-                self.child_to_parent_map = pickle.load(file)
-            
-            with open(self.num_parents_list_path, 'rb') as file:
-                self.num_parents_list = pickle.load(file)
-            
-            self.parent_multiclass_labels = np.load(self.parent_multiclass_labels_path)
-            return
-        
-        ## Roundabout way to get a copy of df_condensed (since col 'multitask_indices' has lists)
-        df_labels = pd.DataFrame(self.df_condensed['label_num_multi'].values, columns=['label_num_multi'])
-        df_labels['label_str'] = self.df_condensed['label_str'].values
-        
-        ## Get all the multitask indices for each row
-        label_multitask_arr = np.array(self.df_condensed['label_multitask'].to_list()) ## [len(df_condensed), num_indiv_classes]
-        row_indices, multitask_indices = np.where(label_multitask_arr == 1)
-
-        df_labels['multitask_indices'] = 0
-        df_labels['multitask_indices'] = df_labels['multitask_indices'].astype(object)
-        
-        num_parents = [] ## list of number of parents for each row
-        
-        for i, row in df_labels.iterrows():
-            ## get list of multitask indices associated with the multiclass label
-            indices_for_row = np.where(row_indices == i)
-            multitask_indices_for_row = multitask_indices[indices_for_row]
-            df_labels.at[i, 'multitask_indices'] = multitask_indices_for_row
-            num_parents.append(multitask_indices_for_row.shape[0])
-
-            ## Gets multitask to multiclass mapping for parents that exist individually
-            if multitask_indices_for_row.shape[0] == 1: # indiv class
-                parent_label_num_multi = row['label_num_multi']
-                if self.parent_multiclass_labels[multitask_indices_for_row[0]] == -1:
-                    self.parent_multiclass_labels[multitask_indices_for_row[0]] = parent_label_num_multi
-        
-        ## Note: parents who do not exist individually will be marked by a -1 in the self.parent_multiclass_labels array
-        
-        ## Add 'No Finding' multiclass label to self.parent_multiclass_labels
-        no_finding_label = df_labels['label_num_multi'][df_labels['label_str'] == 'No Finding'].drop_duplicates().values[0]               
-        self.parent_multiclass_labels[-1] = no_finding_label
-        
-        ## Populate the rest of the self.parent_multiclass_labels (parents that only exist as combos)
-        ## I realized that this is not necessary, but just in case we somehow need it
-#         indiv_parent_indices = np.where(self.parent_multiclass_labels == -1)[0]
-#         self.parent_multiclass_labels[indiv_parent_indices] = np.arange(indiv_parent_indices.shape[0]) \
-#                                                                 + self.num_classes_multiclass
-        
-#         print(self.parent_multiclass_labels)
-
-        self.num_parents_list = num_parents
-    
-        ## Dump to pickle
-        with open(self.num_parents_list_path, 'wb') as file:
-            pickle.dump(self.num_parents_list, file, protocol=pickle.HIGHEST_PROTOCOL)
-        
-        np.save(self.parent_multiclass_labels_path, self.parent_multiclass_labels)
-        
-        ## Get the parent multiclass labels if the indiv class exists
-        child_to_parent_map = {}
-
-        for i, row in df_labels.iterrows():
-            parents = np.array([])
-            if row['multitask_indices'].shape[0] > 1: ## combo
-                parents = row['multitask_indices']
-                
-#                 for ind in row['multitask_indices']:
-#                     if ind in indiv_parent_multitask_to_multiclass:
-#                         parent_label_num_multi = indiv_parent_multitask_to_multiclass[ind]
-#                         parents.append(parent_label_num_multi)
-            
-            child_multiclass_ind = row['label_num_multi']
-            if child_multiclass_ind not in child_to_parent_map and parents.shape[0] > 0:
-                child_to_parent_map[child_multiclass_ind] = parents
-
-        self.child_to_parent_map = child_to_parent_map
-        
-        ## Dump to pickle
-        with open(self.child_to_parent_map_path, 'wb') as file:
-            pickle.dump(self.child_to_parent_map, file, protocol=pickle.HIGHEST_PROTOCOL)
-
-#         print(self.child_to_parent_map)
         
     
     def get_data_stats2(self, df):
@@ -383,8 +211,8 @@ class MetaChexDataset():
         total = df_counts['count'].values.sum()
         print(f'Total number of images for 18-way classification: {total}')
         return df_counts
-        
-        
+    
+    
     def get_data_stats(self, df):
         unique_labels_dict = {} ## keys are str
         unique_combos_dict = {} ## keys are tuples of str
@@ -425,11 +253,10 @@ class MetaChexDataset():
         return unique_labels_dict, df_combo_counts, df_label_nums, df_combo_nums
     
     
-    def get_data_splits3(self, df, split=(0.7, 0.2, 0.1)):
+    def get_data_splits3(self, df, split=(0.7, 0.1, 0.2)):
         """
         Splits according to multiclass label to the split percentages as best as possible
-        Unlike get_data_splits2, we DO NOT split according to pre-defined NIH splits
-        We simply split each class up according to the percentages
+        Note: We DO NOT split according to pre-defined NIH splits, since we will train from scratch
         """
         # Load datasplit if it exists
         if os.path.isfile(self.datasplit_path): 
@@ -479,106 +306,6 @@ class MetaChexDataset():
             pickle.dump(data_splits, file, protocol=pickle.HIGHEST_PROTOCOL)
         
         return data_splits
-
-    
-    
-    def get_data_splits2(self, df, split=(0.7, 0.2, 0.1)):
-        """
-        Splits according to multiclass label to the split percentages as best as possible
-        We first split according to pre-defined NIH splits (the ones used when pretraining CheXNet)
-        Then we split according to the percentages, the non-nih data per combo label
-        """
-        
-        # Load datasplit if it exists
-        if os.path.isfile(self.datasplit_path): 
-            with open(self.datasplit_path, 'rb') as file:
-                data_splits = pickle.load(file)
-        
-            return data_splits
-        
-        # Datasplit does not exist
-        
-        data_splits = []
-        ## Deal with NIH datasplit first
-        nih_dataframes = []
-        nih_df_sizes = []
-        
-        df_nih_train = df[df['dataset'] == 'train']
-        df_nih_val = df[df['dataset'] == 'val']
-        
-        nih_df_sizes.extend([len(df_nih_train), len(df_nih_val)])
-        nih_dataframes.extend([df_nih_train, df_nih_val])
-        
-        df_nih_test = df[df['dataset'] == 'test']
-        nih_df_sizes.append(len(df_nih_test))
-        nih_dataframes.append(df_nih_test)
-        
-        nih_data_dict = {'label': [], 'count': []}
-        df_nih = df[~df['dataset'].isna()]
-        image_paths, multiclass_labels = df_nih['image_path'].values, df_nih['label_num_multi'].values
-        
-        for i in range(df['label_num_multi'].max() + 1):
-            rows_with_label = np.where(multiclass_labels == i)
-            images_with_label = image_paths[rows_with_label]
-            
-            df_subsplit = df_nih.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
-
-            if len(df_subsplit) > 0:
-                label = df_subsplit['label_str'].drop_duplicates().values[0]
-                nih_data_dict['label'].append(label)
-                nih_data_dict['count'].append(len(df_subsplit))
-        
-        nih_data_counts = pd.DataFrame.from_dict(nih_data_dict)
-        nih_data_counts.to_csv(os.path.join(PATH_TO_DATA_FOLDER, 'nih_data_counts.csv'), index=False)
-        print(f'nih_data_counts: \n {nih_data_counts}')
-        
-        
-        # ## Non-nih data
-        
-        ## Split the rest of the data relatively evenly according to the ratio per class
-        ## That is, for each label, the first 70% goes to train, the next 20% to val, the final 10% to test
-        df_other = df[df['dataset'].isna()]
-        df_other = sklearn.utils.shuffle(df_other, random_state=271) # shuffle
-        
-        df_other_splits = [pd.DataFrame(columns=df.columns)] * 3
-        
-        image_paths, multiclass_labels = df_other['image_path'].values, df_other['label_num_multi'].values
-        
-        non_nih_data_dict = {'label': [], 'count': []}
-        
-        for i in range(df['label_num_multi'].max() + 1):
-            rows_with_label = np.where(multiclass_labels == i)
-            images_with_label = image_paths[rows_with_label]
-            
-            df_subsplit = df_other.loc[df['image_path'].isin(images_with_label)].reset_index(drop=True)
-
-            if len(df_subsplit) > 0:
-                label = df_subsplit['label_str'].drop_duplicates().values[0]
-                non_nih_data_dict['label'].append(label)
-                non_nih_data_dict['count'].append(len(df_subsplit))
-                
-            val_idx = int(len(df_subsplit) * split[0])
-            test_idx = val_idx + int(len(df_subsplit) * split[1])
-            df_other_splits[0] = df_other_splits[0].append(df_subsplit.head(val_idx))
-            df_other_splits[1] = df_other_splits[1].append(df_subsplit[val_idx:test_idx])
-            df_other_splits[2] = df_other_splits[2].append(df_subsplit[test_idx:])
-        
-        non_nih_data_counts = pd.DataFrame.from_dict(non_nih_data_dict)
-        non_nih_data_counts.to_csv(os.path.join(PATH_TO_DATA_FOLDER, 'non_nih_data_counts.csv'), index=False)
-        print(f'non_nih_data_counts: \n {non_nih_data_counts}')
-        
-        for i in range(3):
-            df_combined = nih_dataframes[i].append(df_other_splits[i])
-            data_splits.append(df_combined)
-            
-        print([len(data_splits[i]) for i in range(len(data_splits))])
-        
-        ## Dump to pickle
-        with open(self.datasplit_path, 'wb') as file:
-            pickle.dump(data_splits, file, protocol=pickle.HIGHEST_PROTOCOL)
-        
-        return data_splits
-
     
     
     def get_multiclass_generator_splits(self, df, split=(0.7, 0.1, 0.2), shuffle_train=True, baseline=False):
@@ -654,60 +381,6 @@ class MetaChexDataset():
                                num_classes=self.num_classes_multiclass, multiclass=True, batch_size=self.batch_size)
             full_datasets.append(ds)
         
-        return full_datasets
-    
-    
-    def get_multitask_generator_splits(self, df, split=(0.7, 0.2, 0.1), shuffle_train=True):
-        
-#         data_splits = self.get_data_splits2(df, split)
-        data_splits = self.get_data_splits3(df, split)
-        
-        # -------------------------------------------------
-        df_combined = data_splits[0]
-        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
-        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
-        untrained_classes = np.where(df_multitask_labels_sum == 0)
-        print(f'{untrained_classes[0].shape[0]} classes not trained on: {untrained_classes}')
-
-        df_combined = data_splits[1]
-        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
-        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
-        unvalidated_classes = np.where(df_multitask_labels_sum == 0)
-        print(f'{unvalidated_classes[0].shape[0]} classes not validated on: {unvalidated_classes}')
-
-        df_combined = data_splits[2]
-        df_multitask_labels = np.array(df_combined['label_multitask'].to_list())
-        df_multitask_labels_sum = np.sum(df_multitask_labels, axis=0)
-        untested_classes = np.where(df_multitask_labels_sum == 0)
-        print(f'{untested_classes[0].shape[0]} classes not tested on: {untested_classes}')
-        # -------------------------------------------------
-        
-        ## Create image sequences
-        full_datasets = []
-        for i, ds_type in enumerate(['train', 'val', 'test']):
-            if ds_type == 'train':
-                shuffle_on_epoch_end = shuffle_train
-                factor = 0.1
-            elif ds_type == 'val':
-                shuffle_on_epoch_end = False
-                factor = 0.2
-            else: ## test
-                shuffle_on_epoch_end = False
-                factor = 1
-
-            steps = int(len(df_combined) / self.batch_size * factor)
-
-            if ds_type == 'train':
-                self.train_steps_per_epoch = steps
-            elif ds_type == 'val':
-                self.val_steps_per_epoch = steps
-            else: ## test
-                steps += 1 if len(df_combined) > self.batch_size * factor else 0 ## add for extra incomplete batch
-
-            ds = ImageSequence(df=data_splits[i], steps=steps, shuffle_on_epoch_end=shuffle_on_epoch_end, 
-                               batch_size=self.batch_size, num_classes=self.num_classes_multitask)
-            full_datasets.append(ds)
-
         return full_datasets
    
     
@@ -923,47 +596,3 @@ class MetaChexDataset():
         weights_false = weights_false.sort_index()
         
         return np.array([weights.values, weights_false.values])
-    
-    
-    def get_class_weights(self, one_cap=False):
-        """ Compute class weighting values for dataset (both individual and combo labels computed)."""
-        _, _, indiv, combo = self.get_data_stats(self.df_condensed)
-        if one_cap: # Restrains between 0 and 1
-            indiv_weights = (combo['count'].sum() - indiv['count'])/combo['count'].sum()
-            indiv_weights_false = indiv['count']/combo['count'].sum()
-            combo_weights = (combo['count'].sum() - combo['count'])/combo['count'].sum()
-            combo_weights_false = combo['count']/combo['count'].sum()
-        else: # Unconstrained
-            # weight we want to apply if class is True
-            indiv_weights = (1 / indiv['count']) * (indiv['count'].sum() / indiv.shape[0]) 
-            # weight we want to apply if class is False
-            indiv_weights_false = (1 / (indiv['count'].sum()-indiv['count'])) * (indiv['count'].sum() / indiv.shape[0]) 
-            combo_weights = (1 / combo['count']) * (combo['count'].sum() / combo.shape[0])
-            combo_weights_false = (1 / (combo['count'].sum()-combo['count'])) * (combo['count'].sum() / combo.shape[0]) 
-        
-        indiv_weights = indiv_weights.sort_index()
-        indiv_weights = indiv_weights.drop(['No Finding'])
-        indiv_weights_false = indiv_weights_false.sort_index()
-        indiv_weights_false = indiv_weights_false.drop(['No Finding'])
-        combo_weights = combo_weights.sort_index()
-        combo_weights_false = combo_weights_false.sort_index()
-        
-#         indiv_class_weights = dict(list(enumerate((indiv_weights.values, indiv_weights_false.values))))
-#         combo_class_weights = dict(list(enumerate((combo_weights.values, combo_weights_false.values))))
-        
-#         indiv_class_weights = {}
-#         for i in range(len(indiv_weights)):
-#             indiv_class_weights = {i: {0: indiv_weights.values[i], 1: indiv_weights_false.values[i]}}
-        
-        return np.array([indiv_weights.values, indiv_weights_false.values]), np.array([combo_weights.values, combo_weights_false.values])
-    
-
-
-if __name__ == '__main__':
-    dataset = MetaChexDataset()
-    train_ds = dataset.train_ds
-    val_ds = dataset.val_ds
-    test_ds = dataset.test_ds
-
-    # Grab one sample
-    next(iter(train_ds))

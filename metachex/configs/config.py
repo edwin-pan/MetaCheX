@@ -10,3 +10,8 @@ COVID_CHESTXRAY_METADATA_PATH = 'covid-chestxray-dataset/metadata.csv'
 # Constants
 IMAGE_SIZE = 224
 SAMPLE_MIN = 5
+
+# Tsne plot classes
+TSNE_PARENT_CLASSES = ['COVID-19', 'Pneumonia']
+TSNE_CHILD_CLASSES = ['COVID-19|Pneumonia']
+TSNE_DISTANCE_CLASSES = ['Pneumonia', 'Hernia', 'Lung_Opacity']

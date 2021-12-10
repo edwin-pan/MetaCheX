@@ -67,8 +67,6 @@ class ImageSequence(Sequence):
         return image_array
 
     def transform_batch_images(self, batch_x):
-#         if self.augmenter is not None:
-#             batch_x = self.augmenter.augment_images(batch_x)
         imagenet_mean = np.array([0.485, 0.456, 0.406])
         imagenet_std = np.array([0.229, 0.224, 0.225])
         batch_x = (batch_x - imagenet_mean) / imagenet_std
@@ -242,9 +240,7 @@ class ProtoNetImageSequence(ImageSequence):
             if self.eval:
                 query_covid_mask = sampled_query_df['label_str'].values == 'COVID-19'
                 query_tb_mask = sampled_query_df['label_str'].values == 'Tuberculosis'
-#                 query_covid_tb_mask = query_covid_mask | query_tb_mask
                 query_mask_batch = np.stack([query_covid_mask, query_tb_mask], axis=1)
-#                 query_mask_batch = np.stack([query_covid_mask, query_tb_mask, query_covid_tb_mask], axis=1)
                 all_query_mask_batches.append(query_mask_batch)
         
             all_query_path_batches.append(query_path_batch)

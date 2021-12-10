@@ -53,7 +53,7 @@ def train(num_epochs=15, checkpoint_path="training_progress_baseline_multiclass/
 def compile():
     class_weights = dataset.get_class_weights2(one_cap=False)
 
-    loss_fn = Losses(class_weights, batch_size=dataset.batch_size)
+    loss_fn = Losses(class_weights)
 
     chexnet.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
                     loss=loss_fn.weighted_binary_crossentropy(),
