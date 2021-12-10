@@ -209,11 +209,13 @@ if __name__ == '__main__':
         tsne_datasets = [dataset.tsne1_ds, dataset.tsne2_ds]
 
         embedding_save_paths = [os.path.join(record_dir, 'embeddings1.pkl'), os.path.join(record_dir, 'embeddings2.pkl')]
-        tsne_save_paths = [os.path.join(record_dir, 'tsne1.png'), os.path.join(record_dir, 'tsne2.png')]
+        tsne_save_paths = [os.path.join(record_dir, 'covid_pneumonia_child_protonet_supcon.pdf'), 
+                           os.path.join(record_dir, 'hernia_lung_opacity_pneumonia_protonet_supcon.pdf')]
         # generating embeddings can take some time. Load if possible
         
         ## TSNE 1: Parents and their children
-        for i in [1]: #range(2): 
+        learning_rates = [500, 300]
+        for i in range(2): 
             if os.path.exists(embedding_save_paths[i]):
                 print(f"[INFO] Embeddings {i + 1} already processed. Loading from {embedding_save_paths[i]}")
                 with open(embedding_save_paths[i], 'rb') as file:
@@ -226,7 +228,7 @@ if __name__ == '__main__':
 
             tsne_labels = tsne_datasets[i].get_y_true()
             print(tsne_labels.shape)
-            tsne_feats = process_tSNE(embeddings, perplexity=30, n_iter=10000, learning_rate=500,
+            tsne_feats = process_tSNE(embeddings, perplexity=30, n_iter=10000, learning_rate=learning_rates[i],
                                      early_exaggeration=12)
 
             plot_tsne(tsne_feats, tsne_labels, save_path=tsne_save_paths[i])

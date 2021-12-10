@@ -100,10 +100,35 @@ if __name__ == '__main__':
     if args.evaluate:
         print("[INFO] Evaluating performance")
         eval_path = args.ckpt_save_path if args.pretrained is None else args.pretrained
-        y_test_true = dataset.test_ds.get_y_true() 
-        y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
+        
+        y_test_true_path = os.path.join(record_dir, 'y_test_true.pkl')
+        if os.path.exists(y_test_true_path):
+            with open(y_test_true_path, 'rb') as file:
+                y_test_true = pickle.load(file)
+                print(f'y_test_true.shape: {y_test_true.shape}')
+        else:
+            y_test_true = dataset.test_ds.get_y_true() 
+            print(f'y_test_true.shape: {y_test_true.shape}')
+            
+            with open(y_test_true_path, 'wb') as file:
+                pickle.dump(y_test_true, file, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        print("[INFO] Getting test predictions")
+        y_test_pred_path = os.path.join(record_dir, 'y_test_pred.pkl')
+        if os.path.exists(y_test_pred_path):
+            with open(y_test_pred_path, 'rb') as file:
+                y_test_pred = pickle.load(file)
+                print(f'y_test_pred.shape: {y_test_true.shape}')
+        else:
+            y_test_pred = chexnet.predict(dataset.test_ds, verbose=1)
+            print(f'y_test_pred.shape: {y_test_pred.shape}')
+            
+            with open(y_test_pred_path, 'wb') as file:
+                pickle.dump(y_test_pred, file, protocol=pickle.HIGHEST_PROTOCOL)
         
         dir_path = os.path.dirname(eval_path)
+        
+        print("[INFO] Getting AUROC and F1 Metrics")
         mean_auroc(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
         mean_f1(y_test_true, y_test_pred, dataset, eval=True, dir_path=dir_path)
 #         average_precision(y_test_true, y_test_pred, dataset, dir_path=dir_path)
@@ -115,9 +140,11 @@ if __name__ == '__main__':
         tsne_datasets = [dataset.tsne1_ds, dataset.tsne2_ds]
 
         embedding_save_paths = [os.path.join(record_dir, 'embeddings1.pkl'), os.path.join(record_dir, 'embeddings2.pkl')]
-        tsne_save_paths = [os.path.join(record_dir, 'tsne1.png'), os.path.join(record_dir, 'tsne2.png')]
+        tsne_save_paths = [os.path.join(record_dir, 'covid_pneumonia_child_baseline.pdf'), 
+                           os.path.join(record_dir, 'hernia_lung_opacity_pneumonia_baseline.pdf')]
         # generating embeddings can take some time. Load if possible
         
+        learning_rates = [500, 300]
         for i in range(2):
             if os.path.exists(embedding_save_paths[i]):
                 print(f"[INFO] Embeddings {i + 1} already processed. Loading from {embedding_save_paths[i]}")
@@ -131,7 +158,7 @@ if __name__ == '__main__':
 
             tsne_labels = tsne_datasets[i].get_y_true()
             print(tsne_labels.shape)
-            tsne_feats = process_tSNE(embeddings, perplexity=30, n_iter=10000, learning_rate=300,
+            tsne_feats = process_tSNE(embeddings, perplexity=30, n_iter=10000, learning_rate=learning_rates[i],
                                      early_exaggeration=12)
 
             plot_tsne(tsne_feats, tsne_labels, save_path=tsne_save_paths[i])

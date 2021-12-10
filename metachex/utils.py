@@ -242,6 +242,7 @@ def mean_f1(y_true, y_pred, dataset=None, eval=False, dir_path="."):
     test_f1_log_path = os.path.join(dir_path, "average_f1.txt")
     
     # Threshold (max in row = 1; else 0)
+    print(f'a few rows of y_pred: {y_pred[-10:]}')
     y_pred = tf.where(
         tf.equal(tf.reduce_max(y_pred, axis=1, keepdims=True), y_pred), 
         tf.constant(1, shape=y_pred.shape), 
@@ -257,6 +258,7 @@ def mean_f1(y_true, y_pred, dataset=None, eval=False, dir_path="."):
                 if num == 0:
                     raise ZeroDivisionError
 
+                print(f'{dataset.unique_labels[i]} # predicted positive: {tf.reduce_sum(y_pred[:, i])}')
                 f1 = f1_score(y_true[:, i], y_pred[:, i])
                 f1s.append(f1)
             except ZeroDivisionError:

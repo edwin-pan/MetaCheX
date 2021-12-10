@@ -28,8 +28,8 @@ TSNE_PARENT_CLASSES = ['COVID-19', 'Pneumonia']
 TSNE_CHILD_CLASSES = ['COVID-19|Pneumonia']
 
 # TSNE_DISTANCE_CLASSES = ['COVID-19', 'Pneumonia', 'Tuberculosis', 'Mass', 'No Finding']
-# TSNE_DISTANCE_CLASSES = ['Pneumonia', 'Hernia', 'Lung_Opacity'] # this works pretty well 
-TSNE_DISTANCE_CLASSES = ['Pneumonia', 'COVID-19', 'Edema'] # this works pretty well  
+TSNE_DISTANCE_CLASSES = ['Pneumonia', 'Hernia', 'Lung_Opacity'] # this works pretty well 
+# TSNE_DISTANCE_CLASSES = ['Pneumonia', 'COVID-19', 'Edema'] # this works pretty well  
 
 
 
@@ -70,8 +70,6 @@ class MetaChexDataset():
         
         if multiclass or protonet:
             self.df_parents, self.df_covid_tb, self.df_children = self.subsample_data()
-            
-            self.tsne1_ds, self.tsne2_ds = self.get_tsne_generators(max_num_vis_samples)
 
         print("[INFO] constructing tf train/val/test vars")
          ## already shuffled and batched
@@ -85,6 +83,7 @@ class MetaChexDataset():
                                                                                             n, k, n_query, n_test, k_test,
                                                                                             n_test_query,
                                                                                             shuffle_train=shuffle_train)
+            self.tsne1_ds, self.tsne2_ds = self.get_tsne_generators(max_num_vis_samples)
 #             [self.train_ds, self.val_ds, self.test_ds] = self.get_protonet_generator_splits(self.df_condensed,
 #                                                                                             n, k, n_query, n_test, k_test,
 #                                                                                             n_test_query,
@@ -100,6 +99,7 @@ class MetaChexDataset():
                 [self.train_ds, self.val_ds, self.test_ds] = self.get_multiclass_generator_splits(self.df_combined,
                                                                                                   shuffle_train=shuffle_train,
                                                                                                   baseline=baseline)
+                self.tsne1_ds, self.tsne2_ds = self.get_tsne_generators(max_num_vis_samples)
         else:
             [self.train_ds, self.val_ds, self.test_ds] = self.get_multitask_generator_splits(self.df_condensed, 
                                                                                              shuffle_train=shuffle_train)
@@ -131,12 +131,15 @@ class MetaChexDataset():
             return tsne1_ds, tsne2_ds
         
         ## 1. Parents + their children
-        self.df_combined = self.df_parents.append(self.df_covid_tb).reset_index(drop=True)
-        print(self.df_combined['label_str'].drop_duplicates().values)
+        test_df = self.test_ds.df.append(self.df_covid_tb)
+        test_df = test_df.drop_duplicates(subset=['image_path']).reset_index(drop=True)
+        
+        print(test_df['label_str'].drop_duplicates().values)
+        
         ## Get parents
-        df_parents = pd.DataFrame(columns=self.df_combined.columns)
+        df_parents = pd.DataFrame(columns=test_df.columns)
         for parent in TSNE_PARENT_CLASSES:
-            df_class = self.df_combined[self.df_combined['label_str'] == parent] # Get class rows
+            df_class = test_df[test_df['label_str'] == parent] # Get class rows
             df_class = df_class.sample(n=min(max_num_samples_per_class, len(df_class))) # Sample
             df_parents = df_parents.append(df_class) # Append
         
@@ -151,9 +154,9 @@ class MetaChexDataset():
         df_parents_and_children = df_parents.append(df_children).reset_index(drop=True)
         
         ## 2. Similar vs. distant
-        df_distance = pd.DataFrame(columns=self.df_combined.columns)
+        df_distance = pd.DataFrame(columns=test_df.columns)
         for label in TSNE_DISTANCE_CLASSES:
-            df_class = self.df_combined[self.df_combined['label_str'] == label] # Get class rows
+            df_class = test_df[test_df['label_str'] == label] # Get class rows
             df_class = df_class.sample(n=min(max_num_samples_per_class, len(df_class))) # Sample
             df_distance = df_distance.append(df_class) # Append
         
