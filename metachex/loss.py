@@ -59,9 +59,10 @@ class Losses():
         
         
     def weighted_binary_crossentropy(self):
-        """class_weights: array of size (27, )"""
-        bce = tf.keras.losses.BinaryCrossentropy(from_logits=False, reduction=tf.keras.losses.Reduction.NONE)
-    
+        """class_weights: array of size (18, )"""
+        cce = tf.keras.losses.BinaryCrossentropy(from_logits=False, reduction=tf.keras.losses.Reduction.NONE)
+        cce = tf.keras.losses.CategoricalCrossentropy(from_logits=False, reduction=tf.keras.losses.Reduction.SUM)
+
         def weighted_loss(y_true, y_pred):
             if y_true.shape[0] != None:
                 new_weight = np.zeros(y_true.shape)
@@ -75,7 +76,8 @@ class Losses():
             y_true_fat = y_true.reshape([-1, y_true.shape[1], 1])
             y_pred_fat = y_pred.reshape([-1, y_pred.shape[1], 1])
 
-            return new_weight*bce(y_true_fat, y_pred_fat)
+            # return new_weight*bce(y_true_fat, y_pred_fat)
+            return self.class_weights[0].T*cce(y_true, y_pred)
         return weighted_loss
     
     

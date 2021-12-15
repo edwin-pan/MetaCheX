@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import pickle
 import os
 import argparse
+# import wandb
 
 import tensorflow as tf
 import tensorflow_addons as tfa
@@ -65,6 +66,8 @@ def compile():
 if __name__ == '__main__':
     args = parse_args()
     # os.environ["CUDA_VISIBLE_DEVICES"]=""
+    # wandb.init(project="baseline-multiclass-cce", entity="metachex")
+
     tf.test.is_gpu_available()
     physical_devices = tf.config.experimental.list_physical_devices('GPU')
     config = tf.config.experimental.set_memory_growth(physical_devices[0], True)
